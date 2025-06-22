@@ -236,9 +236,9 @@ with st.sidebar:
     st.subheader("Upload New Documents")
     uploaded_files = st.file_uploader(
         "Choose files to add to knowledge base",
-        type=['pdf', 'docx', 'txt', 'md', 'html', 'xlsx', 'pptx'],
+        type=['pdf', 'docx', 'txt', 'md', 'html', 'xlsx', 'pptx', 'jpg', 'jpeg', 'png', 'tiff', 'bmp'],
         accept_multiple_files=True,
-        help="Supported formats: PDF, DOCX, TXT, Markdown, HTML, Excel, PowerPoint"
+        help="Supported formats: PDF, DOCX, TXT, Markdown, HTML, Excel, PowerPoint, Images (JPG, PNG, TIFF, BMP)"
     )
     
     if uploaded_files:
@@ -292,31 +292,6 @@ if "messages" not in st.session_state:
 
 # Initialize database connection
 table = init_db()
-
-# Sidebar for document upload
-with st.sidebar:
-    st.header("Upload Document")
-    uploaded_file = st.file_uploader("Choose a file", type=["pdf", "docx", "txt"])
-    
-    if uploaded_file:
-        # Display file details
-        st.write(f"Uploaded file: {uploaded_file.name}")
-        st.write(f"File type: {uploaded_file.type}")
-        st.write(f"File size: {uploaded_file.size / (1024 * 1024):.1f} MB")
-        
-        # Initialize document processing components
-        converter, chunker = init_document_processor()
-        
-        # Process document button
-        if st.button("Process Document"):
-            # Process the uploaded document
-            with st.spinner(f"Processing {uploaded_file.name}..."):
-                success = process_uploaded_document(uploaded_file, converter, chunker, table)
-                
-                if success:
-                    st.success(f"✅ {uploaded_file.name} processed and added to the database!")
-                else:
-                    st.error(f"❌ Failed to process {uploaded_file.name}")
 
 # Display chat messages
 for message in st.session_state.messages:
