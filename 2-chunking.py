@@ -1,9 +1,6 @@
 from docling.chunking import HybridChunker
 from docling.document_converter import DocumentConverter
-from dotenv import load_dotenv
 from utils.tokenizer import OpenAITokenizerWrapper
-
-load_dotenv()
 
 
 tokenizer = OpenAITokenizerWrapper()  # Load our custom tokenizer for OpenAI

@@ -9,7 +9,7 @@ This directory contains comprehensive debug and testing utilities for each step 
 - **Functions**: Database status, search testing, embedding visualization, file structure check
 - **Usage**: `python debug_utils.py`
 
-### `1-extraction-debug.py` - Document Extraction Testing
+### `debug-1-extraction.py` - Document Extraction Testing
 - **Purpose**: Debug and test document extraction (PDFs, HTML, sitemaps)
 - **Features**:
   - Internet connectivity check
@@ -19,9 +19,9 @@ This directory contains comprehensive debug and testing utilities for each step 
   - Sitemap functionality testing
   - AI model cache analysis
   - Performance timing
-- **Usage**: `python 1-extraction-debug.py`
+- **Usage**: `python debug-1-extraction.py`
 
-### `2-chunking-debug.py` - Document Chunking Testing
+### `debug-2-chunking.py` - Document Chunking Testing
 - **Purpose**: Debug and test document chunking process
 - **Features**:
   - Tokenizer wrapper testing
@@ -30,9 +30,9 @@ This directory contains comprehensive debug and testing utilities for each step 
   - Chunk analysis (length, metadata, quality)
   - Performance timing
   - Content coherence checking
-- **Usage**: `python 2-chunking-debug.py`
+- **Usage**: `python debug-2-chunking.py`
 
-### `3-embedding-debug.py` - Embeddings & Database Testing
+### `debug-3-embedding.py` - Embeddings & Database Testing
 - **Purpose**: Debug and test embedding generation and LanceDB storage
 - **Features**:
   - SentenceTransformer model testing
@@ -42,9 +42,9 @@ This directory contains comprehensive debug and testing utilities for each step 
   - Embedding generation performance
   - Database insertion testing
   - Memory usage analysis
-- **Usage**: `python 3-embedding-debug.py`
+- **Usage**: `python debug-3-embedding.py`
 
-### `4-search-debug.py` - Search Functionality Testing
+### `debug-4-search.py` - Search Functionality Testing
 - **Purpose**: Debug and test search and retrieval functionality
 - **Features**:
   - Database connection verification
@@ -54,9 +54,9 @@ This directory contains comprehensive debug and testing utilities for each step 
   - Performance benchmarking
   - Result quality assessment
   - Multiple query testing
-- **Usage**: `python 4-search-debug.py`
+- **Usage**: `python debug-4-search.py`
 
-### `5-chat-debug.py` - Chat Interface Testing
+### `debug-5-chat.py` - Chat Interface Testing
 - **Purpose**: Debug and test chat functionality with Ollama
 - **Features**:
   - Ollama service connection testing
@@ -67,26 +67,26 @@ This directory contains comprehensive debug and testing utilities for each step 
   - Streaming response testing
   - Error handling verification
   - Full chat simulation
-- **Usage**: `python 5-chat-debug.py`
+- **Usage**: `python debug-5-chat.py`
 
 ## 🚀 Quick Testing Commands
 
 ### Test Individual Steps:
 ```bash
 # Test extraction
-python 1-extraction-debug.py
+python debug-1-extraction.py
 
 # Test chunking  
-python 2-chunking-debug.py
+python debug-2-chunking.py
 
 # Test embeddings
-python 3-embedding-debug.py
+python debug-3-embedding.py
 
 # Test search
-python 4-search-debug.py
+python debug-4-search.py
 
 # Test chat
-python 5-chat-debug.py
+python debug-5-chat.py
 ```
 
 ### Test Database & Search:
@@ -97,8 +97,8 @@ python debug_utils.py
 
 ### Run Full Pipeline Test:
 ```bash
-# Run all debug files in sequence
-python 1-extraction-debug.py && python 2-chunking-debug.py && python 3-embedding-debug.py && python 4-search-debug.py && python 5-chat-debug.py
+# Run all debug files in sequence (Windows PowerShell)
+python debug-1-extraction.py; python debug-2-chunking.py; python debug-3-embedding.py; python debug-4-search.py; python debug-5-chat.py
 ```
 
 ## 🔍 What Each Debug File Tests

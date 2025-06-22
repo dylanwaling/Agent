@@ -20,12 +20,14 @@ ollama serve
 ollama pull llama3
 ```
 
-### 2. Test the Setup
+### 2. Verify Setup
 
-Run the test script to verify everything is working:
+Check that Ollama is running and the model is available:
 ```cmd
-python test_setup.py
+ollama list
 ```
+
+You should see `llama3` in the output.
 
 ### 3. Run the Pipeline
 
@@ -58,7 +60,7 @@ streamlit run 5-chat.py
 
 ## 🎯 Key Changes Made:
 
-- `requirements.txt` - Fixed LanceDB version, added all local dependencies
+- `docs/requirements.txt` - Fixed LanceDB version, added all local dependencies
 - `3-embedding.py` - Updated to use sentence-transformers and LanceDB 0.8.21 API
 - `4-search.py` - Updated search to work with new table structure
 - `5-chat.py` - Replaced OpenAI with Ollama, updated context retrieval

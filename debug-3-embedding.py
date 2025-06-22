@@ -7,12 +7,9 @@ import numpy as np
 import lancedb
 from docling.chunking import HybridChunker
 from docling.document_converter import DocumentConverter
-from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 from utils.tokenizer import OpenAITokenizerWrapper
 import pandas as pd
-
-load_dotenv()
 
 def test_embedding_model():
     """Test the sentence transformer model"""

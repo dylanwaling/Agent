@@ -2,10 +2,6 @@ import streamlit as st
 import lancedb
 import ollama
 from sentence_transformers import SentenceTransformer
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 # Initialize the embedding model (same as used for creating embeddings)
 model = SentenceTransformer('BAAI/bge-small-en-v1.5')

@@ -3,11 +3,8 @@ from typing import List, Optional
 import lancedb
 from docling.chunking import HybridChunker
 from docling.document_converter import DocumentConverter
-from dotenv import load_dotenv
 from sentence_transformers import SentenceTransformer
 from utils.tokenizer import OpenAITokenizerWrapper
-
-load_dotenv()
 
 
 tokenizer = OpenAITokenizerWrapper()  # Load our custom tokenizer for OpenAI

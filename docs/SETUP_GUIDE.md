@@ -47,17 +47,8 @@ You should see `llama3` in the list of models.
 The Python packages have been installed, but if you need to reinstall:
 
 ```bash
-pip install -r requirements.txt
+pip install -r docs/requirements.txt
 ```
-
-### 2. Environment Configuration
-
-Copy the example environment file:
-```bash
-copy .env.example .env
-```
-
-The default configuration should work with a standard Ollama installation.
 
 ## Running the Pipeline
 
@@ -123,7 +114,7 @@ This launches the interactive chat interface where you can ask questions about t
 - Verify the model is installed: `ollama pull llama3`
 
 #### "Import errors" in Python
-- Make sure all requirements are installed: `pip install -r requirements.txt`
+- Make sure all requirements are installed: `pip install -r docs/requirements.txt`
 - Check your Python environment is activated
 
 #### "No module named 'lancedb'"

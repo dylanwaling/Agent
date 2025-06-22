@@ -5,11 +5,8 @@ Run this to test and debug the chunking process
 import time
 from docling.chunking import HybridChunker
 from docling.document_converter import DocumentConverter
-from dotenv import load_dotenv
 from utils.tokenizer import OpenAITokenizerWrapper
 import tiktoken
-
-load_dotenv()
 
 def test_tokenizer():
     """Test the custom tokenizer wrapper"""

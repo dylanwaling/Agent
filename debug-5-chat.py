@@ -7,11 +7,8 @@ import streamlit as st
 import lancedb
 import ollama
 from sentence_transformers import SentenceTransformer
-from dotenv import load_dotenv
 import requests
 import json
-
-load_dotenv()
 
 def test_ollama_connection():
     """Test connection to Ollama service"""
