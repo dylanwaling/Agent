@@ -39,24 +39,49 @@ def init_document_processor():
     return converter, chunker
 
 
-def get_context(query: str, table, num_results: int = 5) -> str:
+def get_context(query: str, table, num_results: int = 5, relevance_threshold: float = 0.3) -> str:
     """Search the database for relevant context.
 
     Args:
         query: User's question
         table: LanceDB table object
         num_results: Number of results to return
+        relevance_threshold: Minimum similarity score to consider relevant (0.0-1.0)
 
     Returns:
-        str: Concatenated context from relevant chunks with source information
+        str: Concatenated context from relevant chunks with source information, or empty string if no relevant docs
     """
     # Create query embedding
     query_embedding = model.encode(query)
     
     # Search the table
     results = table.search(query_embedding).limit(num_results).to_pandas()
+    
+    # Check if we have any results and if they meet the relevance threshold
+    if results.empty:
+        return ""
+    
+    # Debug: print distance values to understand the scale
+    if '_distance' in results.columns:
+        print(f"Debug - Query: '{query}'")
+        print(f"Debug - Distance values: {results['_distance'].tolist()}")
+        
+        # For LanceDB with cosine distance, typical range is 0-2
+        # Where 0 = identical, 1 = perpendicular, 2 = opposite
+        # We want to be very strict about relevance - only accept fairly similar documents
+        max_distance = 0.6  # Only accept results with distance < 0.6 (very strict)
+        
+        relevant_mask = results['_distance'] < max_distance
+        print(f"Debug - Relevant mask: {relevant_mask.tolist()}")
+        
+        if not relevant_mask.any():
+            print("Debug - No relevant results found based on distance threshold")
+            return ""
+        
+        results = results[relevant_mask]
+        print(f"Debug - Filtered to {len(results)} relevant results")
+    
     contexts = []
-
     for _, row in results.iterrows():
         # Extract metadata directly from row (no nested metadata object)
         filename = row.get("filename")
@@ -308,8 +333,26 @@ if prompt := st.chat_input("Ask a question about the document"):
     st.session_state.messages.append({"role": "user", "content": prompt})
 
     # Get relevant context
-    with st.status("Searching document...", expanded=False) as status:
-        context = get_context(prompt, table)
+    # Show a temporary status message
+    search_placeholder = st.empty()
+    search_placeholder.info("🔍 Searching documents...")
+    
+    context = get_context(prompt, table)
+    
+    # Clear the search status
+    search_placeholder.empty()
+    
+    if not context:
+        # No relevant documents found
+        with st.chat_message("assistant"):
+            no_context_response = "I couldn't find any relevant documents to answer your question. Please try asking about topics covered in your uploaded documents, or consider uploading more documents that might contain the information you're looking for."
+            st.markdown(no_context_response)
+            
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": no_context_response})
+        
+    else:
+        # Found relevant context - show search results
         st.markdown(
             """
             <style>
@@ -364,10 +407,10 @@ if prompt := st.chat_input("Ask a question about the document"):
                 unsafe_allow_html=True,
             )
 
-    # Display assistant response
-    with st.chat_message("assistant"):
-        # Get model response with streaming
-        response = get_chat_response(st.session_state.messages, context)
+        # Display assistant response with context
+        with st.chat_message("assistant"):
+            # Get model response with streaming
+            response = get_chat_response(st.session_state.messages, context)
 
-    # Add assistant response to chat history
-    st.session_state.messages.append({"role": "assistant", "content": response})
+        # Add assistant response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": response})
