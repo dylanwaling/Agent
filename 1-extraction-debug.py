@@ -39,13 +39,21 @@ def check_docling_installation():
         converter = DocumentConverter()
         print("✅ DocumentConverter created")
         
-        # Test with a simple HTML string
+        # Test with a simple HTML file (create temporary file)
+        import tempfile
         simple_html = "<html><body><h1>Test Document</h1><p>This is a test paragraph with some content to verify HTML processing.</p></body></html>"
+        
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as temp_file:
+            temp_file.write(simple_html)
+            temp_path = temp_file.name
         
         print("🔄 Testing HTML processing...")
         start_time = time.time()
-        result = converter.convert_from_string(simple_html, source_format="html")
+        result = converter.convert(temp_path)
         end_time = time.time()
+        
+        # Clean up temp file
+        os.unlink(temp_path)
         
         if result.document:
             print(f"✅ Basic HTML processing works ({end_time-start_time:.2f}s)")
