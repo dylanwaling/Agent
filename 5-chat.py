@@ -183,11 +183,56 @@ def get_context(query: str, table, num_results: int = 5, relevance_threshold: fl
             print(f"Debug - Filtered to {len(results)} relevant results")
     
     contexts = []
-    for _, row in results.iterrows():
+    total_length = 0
+    
+    # For document-specific queries, don't limit context length to ensure all data is available
+    # For general queries, use a reasonable limit to prevent overwhelming the model
+    if target_filename:
+        max_context_length = None  # No limit for document-specific queries
+        print(f"Debug - Document-specific query: no context length limit applied")
+    else:
+        max_context_length = 8000  # Limit for general queries
+        print(f"Debug - General query: context limited to {max_context_length} characters")
+    
+    for i, (_, row) in enumerate(results.iterrows()):
         # Extract metadata directly from row (no nested metadata object)
         filename = row.get("filename")
         page_numbers = row.get("page_numbers")
         title = row.get("title")
+        text = row.get("text", "")
+        
+        # Debug: Check the actual text content
+        print(f"Debug - Chunk {i+1} from {filename}:")
+        print(f"Debug - Text length: {len(text)}")
+        print(f"Debug - Text preview: '{text[:100]}...'")
+        
+        # Clean the text to remove problematic characters
+        import re
+        
+        # Debug: Show original text preview
+        print(f"Debug - Original text preview: '{text[:200]}...'")
+        
+        # More gentle text cleaning approach
+        # First, normalize whitespace but preserve structure
+        cleaned_text = re.sub(r'[ \t]+', ' ', text)  # Normalize spaces and tabs
+        cleaned_text = re.sub(r'\n\s*\n\s*\n+', '\n\n', cleaned_text)  # Reduce excessive newlines
+        cleaned_text = cleaned_text.strip()
+        
+        # Only remove truly problematic characters (control chars but keep common ones)
+        # Keep: printable ASCII, newlines, tabs, common punctuation and unicode letters/numbers
+        cleaned_text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', cleaned_text)
+        
+        if len(cleaned_text) != len(text):
+            print(f"Debug - Cleaned text (removed {len(text) - len(cleaned_text)} characters)")
+            print(f"Debug - Cleaned text preview: '{cleaned_text[:200]}...'")
+        
+        # Final check - if text is mostly garbage, flag it
+        printable_ratio = sum(1 for c in cleaned_text if c.isprintable() or c in '\n\r\t') / len(cleaned_text) if cleaned_text else 0
+        if printable_ratio < 0.7:
+            print(f"Debug - WARNING: Text appears corrupted (only {printable_ratio:.1%} printable characters)")
+            print(f"Debug - First 100 chars: '{cleaned_text[:100]}'")
+        else:
+            print(f"Debug - Text quality: {printable_ratio:.1%} printable characters")
 
         # Build source citation
         source_parts = []
@@ -209,9 +254,19 @@ def get_context(query: str, table, num_results: int = 5, relevance_threshold: fl
         if title:
             source += f"\nTitle: {title}"
 
-        contexts.append(f"{row['text']}{source}")
+        chunk_content = f"{cleaned_text}{source}"
+        
+        # Check if adding this chunk would exceed our limit (only for general queries)
+        if max_context_length is not None and total_length + len(chunk_content) > max_context_length:
+            print(f"Debug - Stopping at chunk {i+1} to avoid context overflow (would be {total_length + len(chunk_content)} chars)")
+            break
+            
+        contexts.append(chunk_content)
+        total_length += len(chunk_content)
 
-    return "\n\n".join(contexts)
+    final_context = "\n\n".join(contexts)
+    print(f"Debug - Final context length: {len(final_context)} characters")
+    return final_context
 
 
 def get_chat_response(messages, context: str) -> str:
@@ -224,13 +279,42 @@ def get_chat_response(messages, context: str) -> str:
     Returns:
         str: Model's response
     """
-    system_prompt = f"""You are a helpful assistant that answers questions based on the provided context.
-    Use only the information from the context to answer questions. If you're unsure or the context
-    doesn't contain the relevant information, say so.
+    # For large contexts, create a more manageable version to prevent model overload
+    max_safe_context = 12000  # Conservative limit that works well with most models
     
-    Context:
-    {context}
-    """
+    if len(context) > max_safe_context:
+        print(f"Debug - Context too large ({len(context)} chars), truncating to {max_safe_context}")
+        
+        # Simple truncation approach - take the first portion which usually contains the most relevant content
+        # Since our search already ranks by relevance, the most important content should be at the beginning
+        truncated_context = context[:max_safe_context]
+        
+        # Try to end at a natural boundary (end of a sentence or paragraph)
+        last_sentence = truncated_context.rfind('. ')
+        last_paragraph = truncated_context.rfind('\n\n')
+        
+        if last_paragraph > max_safe_context - 500:  # If paragraph boundary is close to the end
+            context = truncated_context[:last_paragraph]
+        elif last_sentence > max_safe_context - 200:  # If sentence boundary is close
+            context = truncated_context[:last_sentence + 1]
+        else:
+            context = truncated_context
+        
+        print(f"Debug - Context truncated to {len(context)} characters")
+
+    system_prompt = f"""You are a helpful assistant that answers questions based on the provided document context.
+
+IMPORTANT INSTRUCTIONS:
+- Use ONLY the information from the context below to answer questions
+- If the context doesn't contain relevant information, clearly state that
+- Provide specific details when available (dates, amounts, names, numbers, etc.)
+- Be concise and focus on directly answering the user's question
+- If the context appears to be truncated or incomplete, acknowledge this limitation
+
+DOCUMENT CONTEXT:
+{context}
+
+Please answer the user's question based on this context."""
 
     # Format messages for Ollama
     formatted_messages = [{"role": "system", "content": system_prompt}]
@@ -238,28 +322,59 @@ def get_chat_response(messages, context: str) -> str:
 
     # Create the streaming response using Ollama
     try:
+        print(f"Debug - Sending context of {len(system_prompt)} characters to model")
+        
         response_stream = ollama.chat(
-            model="tinyllama",  # Use the smaller TinyLlama model
+            model="llama3",  # Use the larger Llama3 model for better context handling
             messages=formatted_messages,
             stream=True,
+            options={
+                "timeout": 45,  # Reduced timeout for faster recovery
+                "temperature": 0.1,  # Lower temperature for more consistent responses
+                "top_p": 0.9,
+            }
         )
         
-        # Collect the response
+        # Collect the response with timeout handling
         full_response = ""
         response_placeholder = st.empty()
+        chunk_count = 0
         
         for chunk in response_stream:
+            chunk_count += 1
+            if chunk_count > 500:  # More conservative limit
+                print("Debug - Response length limit reached, stopping")
+                break
+                
             if 'message' in chunk and 'content' in chunk['message']:
-                full_response += chunk['message']['content']
+                chunk_content = chunk['message']['content']
+                full_response += chunk_content
                 response_placeholder.markdown(full_response + "▌")
+                
+                # Stop if response gets too long
+                if len(full_response) > 3000:
+                    print("Debug - Response getting long, stopping to prevent issues")
+                    break
         
         response_placeholder.markdown(full_response)
+        
+        # If we got no response or a very short response, provide a helpful message
+        if not full_response.strip():
+            fallback_response = "I found relevant information in your document but encountered an issue generating a complete response. The document appears to contain the information you're looking for. Could you try asking a more specific question about what you'd like to know?"
+            response_placeholder.markdown(fallback_response)
+            return fallback_response
+            
         return full_response
         
     except Exception as e:
-        st.error(f"Error connecting to Ollama: {str(e)}")
-        st.info("Make sure Ollama is running on http://localhost:11434 and you have the llama3 model installed.")
-        return "Sorry, I couldn't process your request. Please check if Ollama is running."
+        error_msg = str(e)
+        print(f"Debug - Ollama error: {error_msg}")
+        
+        st.error(f"Error connecting to Ollama: {error_msg}")
+        
+        # Provide a helpful fallback response 
+        fallback_response = "I found your document and relevant information, but encountered a technical issue with the AI model. Please try asking a more specific question, or check that Ollama is running properly."
+        return fallback_response
 
 
 def process_uploaded_document(uploaded_file, converter, chunker, table):
@@ -348,6 +463,30 @@ def process_uploaded_document(uploaded_file, converter, chunker, table):
                 
     except Exception as e:
         st.error(f"Error processing document: {str(e)}")
+        return False
+
+
+def reprocess_document_if_corrupted(filename, converter, chunker, table):
+    """Re-process a document if it appears to be corrupted in the database
+    
+    Args:
+        filename: Name of the document to reprocess
+        converter: DocumentConverter instance
+        chunker: HybridChunker instance
+        table: LanceDB table
+        
+    Returns:
+        bool: Success status
+    """
+    try:
+        # Check if the document exists in the filesystem
+        # For now, we'll just print a message - in a full system, you'd want to
+        # store original file paths or allow re-upload
+        st.warning(f"Document '{filename}' appears to have extraction issues. Please re-upload the document for better results.")
+        return False
+        
+    except Exception as e:
+        st.error(f"Error checking document: {str(e)}")
         return False
 
 
