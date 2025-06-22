@@ -1,5 +1,5 @@
 pydantic==1.10.14
-lancedb>=0.2.14
+lancedb==0.8.21
 sentence-transformers
 markdown
 python-docx
@@ -11,3 +11,8 @@ easyocr
 PyMuPDF
 streamlit
 requests
+ollama
+python-dotenv
+docling
+tiktoken
+transformers

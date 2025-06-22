@@ -1,13 +1,9 @@
 from docling.chunking import HybridChunker
 from docling.document_converter import DocumentConverter
 from dotenv import load_dotenv
-from openai import OpenAI
 from utils.tokenizer import OpenAITokenizerWrapper
 
 load_dotenv()
-
-# Initialize OpenAI client (make sure you have OPENAI_API_KEY in your environment variables)
-client = OpenAI()
 
 
 tokenizer = OpenAITokenizerWrapper()  # Load our custom tokenizer for OpenAI

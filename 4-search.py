@@ -1,4 +1,5 @@
 import lancedb
+from sentence_transformers import SentenceTransformer
 
 # --------------------------------------------------------------
 # Connect to the database
@@ -7,6 +8,8 @@ import lancedb
 uri = "data/lancedb"
 db = lancedb.connect(uri)
 
+# Initialize the embedding model (same as used for creating embeddings)
+model = SentenceTransformer('BAAI/bge-small-en-v1.5')
 
 # --------------------------------------------------------------
 # Load the table
@@ -14,10 +17,12 @@ db = lancedb.connect(uri)
 
 table = db.open_table("docling")
 
-
 # --------------------------------------------------------------
 # Search the table
 # --------------------------------------------------------------
 
-result = table.search(query="what's docling?", query_type="vector").limit(3)
-result.to_pandas()
+query = "what's docling?"
+query_embedding = model.encode(query)
+
+result = table.search(query_embedding).limit(3)
+print(result.to_pandas())

@@ -1,15 +1,18 @@
-# Building Knowledge Extraction Pipeline with Docling
+# Building Knowledge Extraction Pipeline with Docling + Ollama + Llama 3
 
 [Docling](https://github.com/DS4SD/docling) is a powerful, flexible open source document processing library that converts various document formats into a unified format. It has advanced document understanding capabilities powered by state-of-the-art AI models for layout analysis and table structure recognition.
 
-The whole system runs locally on standard computers and is designed to be extensible - developers can add new models or modify the pipeline for specific needs. It's particularly useful for tasks like enterprise document search, passage retrieval, and knowledge extraction. With its advanced chunking and processing capabilities, it's the perfect tool for providing GenAI applications with knowledge through RAG (Retrieval Augmented Generation) pipelines.
+This project combines Docling with **Ollama and Llama 3** for a completely local AI pipeline - no external API keys required! The whole system runs locally on standard computers and is designed to be extensible.
 
 ## Key Features
 
 - **Universal Format Support**: Process PDF, DOCX, XLSX, PPTX, Markdown, HTML, images, and more
-- **Advanced Understanding**: AI-powered layout analysis and table structure recognition
+- **Advanced Understanding**: AI-powered layout analysis and table structure recognition  
 - **Flexible Output**: Export to HTML, Markdown, JSON, or plain text
 - **High Performance**: Efficient processing on local hardware
+- **Local AI**: Uses Ollama with Llama 3 for chat responses
+- **Local Embeddings**: Uses sentence-transformers for embeddings (BAAI/bge-small-en-v1.5)
+- **Pydantic v1**: Compatible with Pydantic v1.x for broader compatibility
 
 ## Things They're Working on
 
@@ -22,17 +25,36 @@ The whole system runs locally on standard computers and is designed to be extens
 
 ### Prerequisites
 
-1. Install the required packages:
+1. **Install Ollama** from [https://ollama.ai/](https://ollama.ai/)
 
-```bash
-pip install -r requirements.txt
-```
+2. **Start the Ollama service**:
+   ```bash
+   ollama serve
+   ```
 
-2. Set up your environment variables by creating a `.env` file:
+3. **Pull the Llama 3 model**:
+   ```bash
+   ollama pull llama3
+   ```
 
-```bash
-OPENAI_API_KEY=your_api_key_here
-```
+4. **Install Python dependencies**:
+   ```bash
+   pip install -r requirements.txt
+   ```
+
+   Or use the automated setup script:
+   ```bash
+   python setup.py
+   ```
+
+### Configuration
+
+1. Copy the environment template:
+   ```bash
+   cp .env.example .env
+   ```
+
+2. (Optional) Modify `.env` if you need custom Ollama settings
 
 ### Running the Example
 

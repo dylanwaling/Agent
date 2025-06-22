@@ -1,13 +1,14 @@
 import streamlit as st
 import lancedb
-from openai import OpenAI
+import ollama
+from sentence_transformers import SentenceTransformer
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
 
-# Initialize OpenAI client
-client = OpenAI()
+# Initialize the embedding model (same as used for creating embeddings)
+model = SentenceTransformer('BAAI/bge-small-en-v1.5')
 
 
 # Initialize LanceDB connection
@@ -33,14 +34,18 @@ def get_context(query: str, table, num_results: int = 5) -> str:
     Returns:
         str: Concatenated context from relevant chunks with source information
     """
-    results = table.search(query).limit(num_results).to_pandas()
+    # Create query embedding
+    query_embedding = model.encode(query)
+    
+    # Search the table
+    results = table.search(query_embedding).limit(num_results).to_pandas()
     contexts = []
 
     for _, row in results.iterrows():
-        # Extract metadata
-        filename = row["metadata"]["filename"]
-        page_numbers = row["metadata"]["page_numbers"]
-        title = row["metadata"]["title"]
+        # Extract metadata directly from row (no nested metadata object)
+        filename = row.get("filename")
+        page_numbers = row.get("page_numbers")
+        title = row.get("title")
 
         # Build source citation
         source_parts = []
@@ -49,7 +54,7 @@ def get_context(query: str, table, num_results: int = 5) -> str:
         if page_numbers:
             source_parts.append(f"p. {', '.join(str(p) for p in page_numbers)}")
 
-        source = f"\nSource: {' - '.join(source_parts)}"
+        source = f"\nSource: {' - '.join(source_parts)}" if source_parts else ""
         if title:
             source += f"\nTitle: {title}"
 
@@ -59,7 +64,7 @@ def get_context(query: str, table, num_results: int = 5) -> str:
 
 
 def get_chat_response(messages, context: str) -> str:
-    """Get streaming response from OpenAI API.
+    """Get streaming response from Ollama API.
 
     Args:
         messages: Chat history
@@ -76,19 +81,34 @@ def get_chat_response(messages, context: str) -> str:
     {context}
     """
 
-    messages_with_context = [{"role": "system", "content": system_prompt}, *messages]
+    # Format messages for Ollama
+    formatted_messages = [{"role": "system", "content": system_prompt}]
+    formatted_messages.extend(messages)
 
-    # Create the streaming response
-    stream = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=messages_with_context,
-        temperature=0.7,
-        stream=True,
-    )
-
-    # Use Streamlit's built-in streaming capability
-    response = st.write_stream(stream)
-    return response
+    # Create the streaming response using Ollama
+    try:
+        response_stream = ollama.chat(
+            model="llama3:latest",  # Use the full model name
+            messages=formatted_messages,
+            stream=True,
+        )
+        
+        # Collect the response
+        full_response = ""
+        response_placeholder = st.empty()
+        
+        for chunk in response_stream:
+            if 'message' in chunk and 'content' in chunk['message']:
+                full_response += chunk['message']['content']
+                response_placeholder.markdown(full_response + "▌")
+        
+        response_placeholder.markdown(full_response)
+        return full_response
+        
+    except Exception as e:
+        st.error(f"Error connecting to Ollama: {str(e)}")
+        st.info("Make sure Ollama is running on http://localhost:11434 and you have the llama3 model installed.")
+        return "Sorry, I couldn't process your request. Please check if Ollama is running."
 
 
 # Initialize Streamlit app
@@ -172,7 +192,7 @@ if prompt := st.chat_input("Ask a question about the document"):
                 unsafe_allow_html=True,
             )
 
-    # Display assistant response first
+    # Display assistant response
     with st.chat_message("assistant"):
         # Get model response with streaming
         response = get_chat_response(st.session_state.messages, context)
