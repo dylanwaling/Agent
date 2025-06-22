@@ -51,8 +51,17 @@ def get_context(query: str, table, num_results: int = 5) -> str:
         source_parts = []
         if filename:
             source_parts.append(filename)
-        if page_numbers:
-            source_parts.append(f"p. {', '.join(str(p) for p in page_numbers)}")
+        
+        # Handle page_numbers safely - check if it's not None and has content
+        if page_numbers is not None:
+            try:
+                # Convert to list if it's not already, then check if it has content
+                page_list = list(page_numbers) if not isinstance(page_numbers, list) else page_numbers
+                if page_list:  # Check if the list is not empty
+                    source_parts.append(f"p. {', '.join(str(p) for p in page_list)}")
+            except (TypeError, ValueError):
+                # If there's any issue with page_numbers, just skip it
+                pass
 
         source = f"\nSource: {' - '.join(source_parts)}" if source_parts else ""
         if title:
@@ -88,7 +97,7 @@ def get_chat_response(messages, context: str) -> str:
     # Create the streaming response using Ollama
     try:
         response_stream = ollama.chat(
-            model="llama3:latest",  # Use the full model name
+            model="tinyllama",  # Use the smaller TinyLlama model
             messages=formatted_messages,
             stream=True,
         )
