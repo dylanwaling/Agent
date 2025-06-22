@@ -1,0 +1,13 @@
+pydantic==1.10.14
+lancedb>=0.2.14
+sentence-transformers
+markdown
+python-docx
+openpyxl
+pdfplumber
+Pillow
+beautifulsoup4
+easyocr
+PyMuPDF
+streamlit
+requests
