@@ -57,29 +57,130 @@ def get_context(query: str, table, num_results: int = 5, relevance_threshold: fl
     # Search the table
     results = table.search(query_embedding).limit(num_results).to_pandas()
     
+    # Check if query mentions a specific document filename using fuzzy matching
+    target_filename = None
+    query_lower = query.lower()
+    
+    # Get all available filenames from the database - need to search all data, not just top results
+    db = lancedb.connect("data/lancedb")
+    table_full = db.open_table("docling")
+    all_data = table_full.to_pandas()
+    
+    if not all_data.empty and 'filename' in all_data.columns:
+        all_filenames = all_data['filename'].unique()
+        
+        # Extract key parts from query that might be filename components
+        import re
+        
+        # Remove common words and extract meaningful terms
+        stop_words = {'my', 'the', 'a', 'an', 'is', 'what', 'whats', 'show', 'me', 'document', 'file', 'pdf', 'docx', 'txt'}
+        query_words = [word for word in re.findall(r'\b\w+\b', query_lower) if word not in stop_words]
+        
+        best_match = None
+        best_score = 0
+        
+        print(f"Debug - Query words after filtering: {query_words}")
+        
+        for filename in all_filenames:
+            if not filename:
+                continue
+                
+            filename_lower = filename.lower()
+            # Remove file extensions and extract meaningful parts
+            filename_clean = re.sub(r'\.(pdf|docx|txt|html|xlsx|pptx)$', '', filename_lower)
+            filename_parts = re.findall(r'\b\w+\b', filename_clean)
+            
+            print(f"Debug - Checking filename: {filename} -> parts: {filename_parts}")
+            
+            # Count how many filename parts appear in the query
+            matches = 0
+            total_parts = len(filename_parts)
+            
+            for part in filename_parts:
+                # Check for exact word match
+                if part in query_words:
+                    matches += 1
+                # Check for partial matches (for things like "jan" matching "january")
+                else:
+                    for query_word in query_words:
+                        if len(query_word) >= 3 and (part.startswith(query_word) or query_word in part):
+                            matches += 0.7  # Partial match gets less weight
+                            break
+            
+            # Special bonus for exact filename substring in query
+            if filename_lower in query_lower or filename_clean in query_lower:
+                matches += 1
+            
+            # Calculate match score
+            if total_parts > 0:
+                score = matches / total_parts
+                print(f"Debug - {filename}: {matches}/{total_parts} = {score:.2f}")
+                
+                # Lower threshold for better matching, especially for short filenames
+                threshold = 0.4 if total_parts <= 2 else 0.5
+                
+                if score >= threshold and score > best_score:
+                    best_match = filename
+                    best_score = score
+        
+        if best_match:
+            target_filename = best_match
+            print(f"Debug - Detected specific document request: {target_filename} (score: {best_score:.2f})")
+    
     # Check if we have any results and if they meet the relevance threshold
     if results.empty:
         return ""
+    
+    # Set up distance threshold for relevance filtering
+    max_distance = 0.75  # Only accept results with distance < 0.75 (balanced threshold)
     
     # Debug: print distance values to understand the scale
     if '_distance' in results.columns:
         print(f"Debug - Query: '{query}'")
         print(f"Debug - Distance values: {results['_distance'].tolist()}")
         
-        # For LanceDB with cosine distance, typical range is 0-2
-        # Where 0 = identical, 1 = perpendicular, 2 = opposite
-        # We want to be very strict about relevance - only accept fairly similar documents
-        max_distance = 0.6  # Only accept results with distance < 0.6 (very strict)
+    # If a specific document was detected, search within that document only
+    if target_filename:
+        print(f"Debug - Searching specifically within document: {target_filename}")
         
-        relevant_mask = results['_distance'] < max_distance
-        print(f"Debug - Relevant mask: {relevant_mask.tolist()}")
-        
-        if not relevant_mask.any():
-            print("Debug - No relevant results found based on distance threshold")
+        # For document-specific queries, get ALL chunks from that document
+        # rather than limiting to semantic similarity
+        document_data = all_data[all_data['filename'] == target_filename]
+        if not document_data.empty:
+            print(f"Debug - Found {len(document_data)} total chunks in document '{target_filename}'")
+            
+            # Convert document_data to the same format as search results
+            # We'll create fake distances (all set to 0.1 to pass relevance check)
+            results = document_data.copy()
+            results['_distance'] = 0.1  # Set low distance so all chunks pass relevance check
+            
+            print(f"Debug - Using all {len(results)} chunks from target document")
+        else:
+            print(f"Debug - Document '{target_filename}' not found in database")
             return ""
         
-        results = results[relevant_mask]
-        print(f"Debug - Filtered to {len(results)} relevant results")
+        # Apply a very lenient relevance threshold (basically accept all chunks from the target doc)
+        if not results.empty and '_distance' in results.columns:
+            # Use a very high threshold to accept all chunks from the specific document
+            doc_specific_threshold = 2.0  # Accept virtually all chunks from specific document
+            relevant_mask = results['_distance'] < doc_specific_threshold
+            print(f"Debug - Relevant mask for document-specific results (threshold {doc_specific_threshold}): accepting all {relevant_mask.sum()} chunks")
+            
+            results = results[relevant_mask]
+            print(f"Debug - Using all {len(results)} chunks from target document")
+    
+    else:
+        # No specific document detected, apply normal relevance filtering
+        if '_distance' in results.columns:
+            relevant_mask = results['_distance'] < max_distance
+            print(f"Debug - Relevant mask: {relevant_mask.tolist()}")
+            
+            if not relevant_mask.any():
+                print("Debug - No relevant results found based on distance threshold")
+                return ""
+            
+            results = results[relevant_mask]
+            print(f"Debug - Filtered to {len(results)} relevant results")
     
     contexts = []
     for _, row in results.iterrows():
