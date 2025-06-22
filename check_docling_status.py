@@ -55,21 +55,35 @@ def test_simple_docling():
         converter = DocumentConverter()
         print("✅ DocumentConverter created")
         
-        # Test with a simple HTML string instead of external URL
+        # Test with a simple HTML string using temp file method
+        import tempfile
+        import os
+        
         simple_html = "<html><body><h1>Test</h1><p>This is a test document.</p></body></html>"
         
         print("🔄 Testing HTML processing...")
-        # This should be fast and not require model downloads
-        result = converter.convert_from_string(simple_html, source_format="html")
         
-        if result.document:
-            print("✅ Basic HTML processing works")
-            markdown = result.document.export_to_markdown()
-            print(f"📄 Extracted content preview: {markdown[:100]}...")
-            return True
-        else:
-            print("❌ No document returned")
-            return False
+        # Create a temporary HTML file
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False) as temp_file:
+            temp_file.write(simple_html)
+            temp_file_path = temp_file.name
+        
+        try:
+            # Use the correct convert() method
+            result = converter.convert(temp_file_path)
+            
+            if result.document:
+                print("✅ Basic HTML processing works")
+                markdown = result.document.export_to_markdown()
+                print(f"📄 Extracted content preview: {markdown[:100]}...")
+                return True
+            else:
+                print("❌ No document returned")
+                return False
+        finally:
+            # Clean up temp file
+            if os.path.exists(temp_file_path):
+                os.unlink(temp_file_path)
             
     except Exception as e:
         print(f"❌ Error: {e}")
