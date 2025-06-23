@@ -419,7 +419,8 @@ def get_chat_response(messages, context: str) -> str:
         max_safe_context = 6000  # Much larger for document-specific queries
         print(f"Debug - PROFESSIONAL mode: using large context limit of {max_safe_context}")
     else:
-        max_safe_context = 2500  # Standard limit for general queries
+        max_safe_context = 4000  # Increased from 2500 to match new context limit
+        print(f"Debug - Standard mode: using context limit of {max_safe_context}")
     
     if len(context) > max_safe_context:
         print(f"Debug - Context too large ({len(context)} chars), truncating to {max_safe_context}")
@@ -464,11 +465,11 @@ If the context doesn't contain the answer, say "I don't have that information in
         is_large_doc_query = len(context) > 4000 and ("Source:" in context and context.count("Source:") >= 3)
         
         if is_large_doc_query:
-            # Professional large document mode
+            # Professional large document mode - use TinyLlama for speed
             max_response_length = 4000
             stop_after_sentences = 8
-            max_chunks = 400
-            model_name = "llama3"  # Use more capable model for complex document queries
+            max_chunks = 500
+            model_name = "tinyllama"  # Use TinyLlama to avoid timeouts
             print(f"Debug - PROFESSIONAL large document mode: max_response={max_response_length}, sentences={stop_after_sentences}, model={model_name}")
         elif len(context) > 2000:
             # Medium context mode
@@ -841,18 +842,35 @@ if prompt := st.chat_input("Ask a question about the document"):
             lines = chunk.split("\n")
             text = lines[0] if lines else ""
             
-            # Find source and title lines
+            # Find source and title lines - look for lines containing source info
             source_line = ""
             title_line = ""
             
             for line in lines[1:]:
-                if line.startswith("Source:"):
-                    source_line = line.replace("Source: ", "")
+                if "Source:" in line:
+                    # Extract everything after "Source:"
+                    source_start = line.find("Source:")
+                    source_line = line[source_start + 7:].strip()  # +7 to skip "Source:"
                 elif line.startswith("Title:"):
                     title_line = line.replace("Title: ", "")
+                elif line.startswith("[Relevance:") and "Source:" in line:
+                    # Handle lines with both relevance and source
+                    source_start = line.find("Source:")
+                    source_line = line[source_start + 7:].strip()
             
-            # Use source info or default
-            display_source = source_line if source_line else f"Section {i+1}"
+            # Use source info or create a meaningful default
+            if source_line:
+                display_source = source_line
+            else:
+                # Try to extract filename from text if it looks like a document reference
+                if "1 Jan.pdf" in chunk or "2408.09869v5.pdf" in chunk:
+                    if "1 Jan.pdf" in chunk:
+                        display_source = "1 Jan.pdf"
+                    else:
+                        display_source = "2408.09869v5.pdf"
+                else:
+                    display_source = f"Section {i+1}"
+            
             display_title = title_line if title_line else "Content"
             
             print(f"Debug - Section {i+1}: source='{display_source}', title='{display_title}'")
