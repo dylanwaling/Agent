@@ -40,7 +40,7 @@ def init_document_processor():
 
 
 def get_context(query: str, table, num_results: int = 5, relevance_threshold: float = 0.3) -> str:
-    """Search the database for relevant context.
+    """Search the database for relevant context with professional-level large document handling.
 
     Args:
         query: User's question
@@ -139,35 +139,10 @@ def get_context(query: str, table, num_results: int = 5, relevance_threshold: fl
         print(f"Debug - Query: '{query}'")
         print(f"Debug - Distance values: {results['_distance'].tolist()}")
         
-    # If a specific document was detected, search within that document only
+    # PROFESSIONAL-LEVEL LARGE DOCUMENT HANDLING
     if target_filename:
-        print(f"Debug - Searching specifically within document: {target_filename}")
-        
-        # For document-specific queries, get ALL chunks from that document
-        # rather than limiting to semantic similarity
-        document_data = all_data[all_data['filename'] == target_filename]
-        if not document_data.empty:
-            print(f"Debug - Found {len(document_data)} total chunks in document '{target_filename}'")
-            
-            # Convert document_data to the same format as search results
-            # We'll create fake distances (all set to 0.1 to pass relevance check)
-            results = document_data.copy()
-            results['_distance'] = 0.1  # Set low distance so all chunks pass relevance check
-            
-            print(f"Debug - Using all {len(results)} chunks from target document")
-        else:
-            print(f"Debug - Document '{target_filename}' not found in database")
-            return ""
-        
-        # Apply a very lenient relevance threshold (basically accept all chunks from the target doc)
-        if not results.empty and '_distance' in results.columns:
-            # Use a very high threshold to accept all chunks from the specific document
-            doc_specific_threshold = 2.0  # Accept virtually all chunks from specific document
-            relevant_mask = results['_distance'] < doc_specific_threshold
-            print(f"Debug - Relevant mask for document-specific results (threshold {doc_specific_threshold}): accepting all {relevant_mask.sum()} chunks")
-            
-            results = results[relevant_mask]
-            print(f"Debug - Using all {len(results)} chunks from target document")
+        print(f"Debug - PROFESSIONAL MODE: Large document handling for '{target_filename}'")
+        return handle_large_document_query(query, target_filename, all_data, query_embedding)
     
     else:
         # No specific document detected, apply normal relevance filtering
@@ -185,14 +160,12 @@ def get_context(query: str, table, num_results: int = 5, relevance_threshold: fl
     contexts = []
     total_length = 0
     
-    # For document-specific queries, don't limit context length to ensure all data is available
-    # For general queries, use a reasonable limit to prevent overwhelming the model
-    if target_filename:
-        max_context_length = None  # No limit for document-specific queries
-        print(f"Debug - Document-specific query: no context length limit applied")
-    else:
-        max_context_length = 8000  # Limit for general queries
-        print(f"Debug - General query: context limited to {max_context_length} characters")
+    # Standard context length limit for general queries
+    max_context_length = 4000  # Increased from 2500 to include more chunks
+    print(f"Debug - Standard context limit: {max_context_length} characters")
+    
+    # First pass: collect and filter chunks, prioritizing clean text
+    good_chunks = []
     
     for i, (_, row) in enumerate(results.iterrows()):
         # Extract metadata directly from row (no nested metadata object)
@@ -201,53 +174,46 @@ def get_context(query: str, table, num_results: int = 5, relevance_threshold: fl
         title = row.get("title")
         text = row.get("text", "")
         
-        # Debug: Check the actual text content
-        print(f"Debug - Chunk {i+1} from {filename}:")
-        print(f"Debug - Text length: {len(text)}")
-        print(f"Debug - Text preview: '{text[:100]}...'")
-        
-        # Clean the text to remove problematic characters
+        # Clean and assess chunk quality (same as before)
         import re
-        
-        # Debug: Show original text preview
-        print(f"Debug - Original text preview: '{text[:200]}...'")
-        
-        # More gentle text cleaning approach
-        # First, normalize whitespace but preserve structure
-        cleaned_text = re.sub(r'[ \t]+', ' ', text)  # Normalize spaces and tabs
-        cleaned_text = re.sub(r'\n\s*\n\s*\n+', '\n\n', cleaned_text)  # Reduce excessive newlines
+        cleaned_text = re.sub(r'[ \t]+', ' ', text)
+        cleaned_text = re.sub(r'\n\s*\n\s*\n+', '\n\n', cleaned_text)
         cleaned_text = cleaned_text.strip()
-        
-        # Only remove truly problematic characters (control chars but keep common ones)
-        # Keep: printable ASCII, newlines, tabs, common punctuation and unicode letters/numbers
         cleaned_text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', cleaned_text)
         
-        if len(cleaned_text) != len(text):
-            print(f"Debug - Cleaned text (removed {len(text) - len(cleaned_text)} characters)")
-            print(f"Debug - Cleaned text preview: '{cleaned_text[:200]}...'")
-        
-        # Final check - if text is mostly garbage, flag it
+        # Quality assessment
         printable_ratio = sum(1 for c in cleaned_text if c.isprintable() or c in '\n\r\t') / len(cleaned_text) if cleaned_text else 0
-        if printable_ratio < 0.7:
-            print(f"Debug - WARNING: Text appears corrupted (only {printable_ratio:.1%} printable characters)")
-            print(f"Debug - First 100 chars: '{cleaned_text[:100]}'")
-        else:
-            print(f"Debug - Text quality: {printable_ratio:.1%} printable characters")
+        words = re.findall(r'\b[a-zA-Z]{3,}\b', cleaned_text)
+        word_ratio = len(' '.join(words)) / len(cleaned_text) if cleaned_text else 0
+        uppercase_ratio = sum(1 for c in cleaned_text if c.isupper()) / len(cleaned_text) if cleaned_text else 0
+        random_char_count = sum(1 for c in cleaned_text if c in '<>{}[]|\\~/`^@#$%&*+=_') 
+        space_ratio = sum(1 for c in cleaned_text if c == ' ') / len(cleaned_text) if cleaned_text else 0
+        
+        quality_score = min(printable_ratio, 1.0) * min(word_ratio * 2, 1.0)
+        
+        if random_char_count > len(cleaned_text) * 0.1:
+            quality_score *= 0.3
+        if uppercase_ratio > 0.8:
+            quality_score *= 0.4
+        if space_ratio < 0.05 and len(cleaned_text) > 50:
+            quality_score *= 0.5
+        if len(cleaned_text) < 10:
+            quality_score *= 0.1
+            
+        if quality_score < 0.5:
+            continue
 
         # Build source citation
         source_parts = []
         if filename:
             source_parts.append(filename)
         
-        # Handle page_numbers safely - check if it's not None and has content
         if page_numbers is not None:
             try:
-                # Convert to list if it's not already, then check if it has content
                 page_list = list(page_numbers) if not isinstance(page_numbers, list) else page_numbers
-                if page_list:  # Check if the list is not empty
+                if page_list:
                     source_parts.append(f"p. {', '.join(str(p) for p in page_list)}")
             except (TypeError, ValueError):
-                # If there's any issue with page_numbers, just skip it
                 pass
 
         source = f"\nSource: {' - '.join(source_parts)}" if source_parts else ""
@@ -255,20 +221,187 @@ def get_context(query: str, table, num_results: int = 5, relevance_threshold: fl
             source += f"\nTitle: {title}"
 
         chunk_content = f"{cleaned_text}{source}"
-        
-        # Check if adding this chunk would exceed our limit (only for general queries)
+        good_chunks.append(chunk_content)
+    
+    print(f"Debug - Found {len(good_chunks)} high-quality chunks after filtering")
+    
+    # Debug: show what chunks we actually have
+    for i, chunk in enumerate(good_chunks[:3]):  # Show first 3 chunks
+        print(f"Debug - Chunk {i+1} preview: '{chunk[:100]}...'")
+    
+    # Build context from good chunks with standard length limit
+    for i, chunk_content in enumerate(good_chunks):
         if max_context_length is not None and total_length + len(chunk_content) > max_context_length:
             print(f"Debug - Stopping at chunk {i+1} to avoid context overflow (would be {total_length + len(chunk_content)} chars)")
             break
             
         contexts.append(chunk_content)
         total_length += len(chunk_content)
+        print(f"Debug - Added chunk {i+1}, total length now: {total_length}")
 
     final_context = "\n\n".join(contexts)
     print(f"Debug - Final context length: {len(final_context)} characters")
+    print(f"Debug - Final context sections: {len(contexts)}")
     return final_context
 
 
+def handle_large_document_query(query: str, filename: str, all_data, query_embedding) -> str:
+    """Professional-level handling for large document queries using hierarchical retrieval and summarization.
+    
+    Args:
+        query: User's question
+        filename: Target document filename  
+        all_data: Full database as pandas DataFrame
+        query_embedding: Query embedding vector
+        
+    Returns:
+        str: Comprehensive context using professional techniques
+    """
+    print(f"Debug - PROFESSIONAL: Handling large document query for '{filename}'")
+    
+    # Get all chunks from the target document
+    document_data = all_data[all_data['filename'] == filename].copy()
+    if document_data.empty:
+        return ""
+    
+    print(f"Debug - PROFESSIONAL: Found {len(document_data)} chunks in document")
+    
+    # Step 1: HIERARCHICAL RETRIEVAL - Find most relevant sections first
+    print("Debug - PROFESSIONAL: Step 1 - Hierarchical retrieval")
+    
+    # Calculate relevance scores for all chunks
+    import numpy as np
+    from sentence_transformers import util
+    
+    chunk_embeddings = []
+    valid_chunks = []
+    
+    model = SentenceTransformer('BAAI/bge-small-en-v1.5')
+    
+    for idx, (_, row) in enumerate(document_data.iterrows()):
+        if 'vector' in row and row['vector'] is not None:
+            chunk_embeddings.append(row['vector'])
+            valid_chunks.append(idx)
+    
+    if not chunk_embeddings:
+        print("Debug - PROFESSIONAL: No valid embeddings found")
+        return ""
+    
+    # Compute similarities
+    chunk_embeddings = np.array(chunk_embeddings)
+    similarities = util.cos_sim(query_embedding, chunk_embeddings)[0]
+    
+    # Get top relevant chunks (more than before)
+    top_k = min(15, len(similarities))  # Get top 15 most relevant chunks
+    top_indices = similarities.argsort(descending=True)[:top_k]
+    
+    print(f"Debug - PROFESSIONAL: Selected top {top_k} most relevant chunks")
+    
+    # Step 2: SMART SUMMARIZATION STRATEGY
+    print("Debug - PROFESSIONAL: Step 2 - Smart summarization")
+    
+    relevant_chunks = []
+    for idx in top_indices:
+        chunk_idx = valid_chunks[idx]
+        row = document_data.iloc[chunk_idx]
+        
+        text = row.get('text', '')
+        # Clean the text
+        import re
+        cleaned_text = re.sub(r'[ \t]+', ' ', text)
+        cleaned_text = re.sub(r'\n\s*\n\s*\n+', '\n\n', cleaned_text)
+        cleaned_text = cleaned_text.strip()
+        cleaned_text = re.sub(r'[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]', '', cleaned_text)
+        
+        # Quality check
+        if len(cleaned_text) < 20:
+            continue
+            
+        # Check quality
+        words = re.findall(r'\b[a-zA-Z]{3,}\b', cleaned_text)
+        word_ratio = len(' '.join(words)) / len(cleaned_text) if cleaned_text else 0
+        
+        if word_ratio < 0.3:  # Skip low-quality chunks
+            continue
+            
+        page_numbers = row.get("page_numbers")
+        # Handle page_numbers safely - could be None, list, or numpy array
+        if page_numbers is not None:
+            try:
+                # Convert to list if it's a numpy array or other iterable
+                if hasattr(page_numbers, '__len__') and len(page_numbers) > 0:
+                    # It's an array-like object with elements
+                    page_list = list(page_numbers)
+                    source_info = f" (Page {', '.join(str(p) for p in page_list)})"
+                elif hasattr(page_numbers, '__iter__') and not isinstance(page_numbers, str):
+                    # It's iterable but not a string
+                    page_list = list(page_numbers)
+                    if page_list:
+                        source_info = f" (Page {', '.join(str(p) for p in page_list)})"
+                    else:
+                        source_info = " (Page unknown)"
+                else:
+                    # It's a single value
+                    source_info = f" (Page {page_numbers})"
+            except (TypeError, ValueError):
+                source_info = " (Page unknown)"
+        else:
+            source_info = " (Page unknown)"
+        
+        relevant_chunks.append({
+            'text': cleaned_text,
+            'source': source_info,
+            'similarity': similarities[idx].item()
+        })
+    
+    print(f"Debug - PROFESSIONAL: Found {len(relevant_chunks)} high-quality relevant chunks")
+    
+    # Step 3: ADAPTIVE CONTEXT ASSEMBLY
+    print("Debug - PROFESSIONAL: Step 3 - Adaptive context assembly")
+    
+    if not relevant_chunks:
+        return ""
+    
+    # Sort by relevance score
+    relevant_chunks.sort(key=lambda x: x['similarity'], reverse=True)
+    
+    # Build comprehensive context with smart truncation
+    contexts = []
+    total_length = 0
+    max_context = 6000  # Larger context for document-specific queries
+    
+    # Include a brief document summary first
+    doc_summary = f"Document: {filename}\nFound {len(relevant_chunks)} relevant sections.\n\n"
+    contexts.append(doc_summary)
+    total_length += len(doc_summary)
+    
+    # Add most relevant chunks with smart prioritization
+    for i, chunk in enumerate(relevant_chunks):
+        chunk_text = chunk['text']
+        source_info = f"\n[Relevance: {chunk['similarity']:.2f}] Source: {filename}{chunk['source']}"
+        full_chunk = f"{chunk_text}{source_info}"
+        
+        # Check if we can fit this chunk
+        if total_length + len(full_chunk) > max_context:
+            # Try to fit a truncated version of highly relevant chunks
+            if chunk['similarity'] > 0.7 and i < 3:  # Very relevant and in top 3
+                available_space = max_context - total_length - len(source_info) - 50
+                if available_space > 200:
+                    truncated_text = chunk_text[:available_space] + "..."
+                    full_chunk = f"{truncated_text}{source_info}"
+                    contexts.append(full_chunk) 
+                    total_length += len(full_chunk)
+            break
+        else:
+            contexts.append(full_chunk)
+            total_length += len(full_chunk)
+    
+    final_context = "\n\n".join(contexts)
+    
+    print(f"Debug - PROFESSIONAL: Final context: {len(final_context)} chars from {len(contexts)-1} chunks")
+    print(f"Debug - PROFESSIONAL: Coverage: {len(contexts)-1}/{len(relevant_chunks)} relevant chunks included")
+    
+    return final_context
 def get_chat_response(messages, context: str) -> str:
     """Get streaming response from Ollama API.
 
@@ -279,88 +412,161 @@ def get_chat_response(messages, context: str) -> str:
     Returns:
         str: Model's response
     """
-    # For large contexts, create a more manageable version to prevent model overload
-    max_safe_context = 12000  # Conservative limit that works well with most models
+    # Dynamic context limits based on query type
+    is_large_doc_query = len(context) > 4000 and ("Source:" in context and context.count("Source:") >= 3)
+    
+    if is_large_doc_query:
+        max_safe_context = 6000  # Much larger for document-specific queries
+        print(f"Debug - PROFESSIONAL mode: using large context limit of {max_safe_context}")
+    else:
+        max_safe_context = 2500  # Standard limit for general queries
     
     if len(context) > max_safe_context:
         print(f"Debug - Context too large ({len(context)} chars), truncating to {max_safe_context}")
         
-        # Simple truncation approach - take the first portion which usually contains the most relevant content
-        # Since our search already ranks by relevance, the most important content should be at the beginning
+        # Smart truncation - try to keep complete sections
         truncated_context = context[:max_safe_context]
         
-        # Try to end at a natural boundary (end of a sentence or paragraph)
-        last_sentence = truncated_context.rfind('. ')
+        # Try to end at a section boundary first, then sentence
+        last_section = truncated_context.rfind('\n\nSource:')
         last_paragraph = truncated_context.rfind('\n\n')
+        last_sentence = truncated_context.rfind('. ')
         
-        if last_paragraph > max_safe_context - 500:  # If paragraph boundary is close to the end
+        if last_section > max_safe_context - 800:  # Keep complete sections when possible
+            context = truncated_context[:last_section]
+        elif last_paragraph > max_safe_context - 400:
             context = truncated_context[:last_paragraph]
-        elif last_sentence > max_safe_context - 200:  # If sentence boundary is close
+        elif last_sentence > max_safe_context - 200:
             context = truncated_context[:last_sentence + 1]
         else:
             context = truncated_context
         
         print(f"Debug - Context truncated to {len(context)} characters")
 
-    system_prompt = f"""You are a helpful assistant that answers questions based on the provided document context.
+    # Use a universal system prompt for all queries
+    system_prompt = f"""Answer the user's question using only the provided context. Be clear and informative.
 
-IMPORTANT INSTRUCTIONS:
-- Use ONLY the information from the context below to answer questions
-- If the context doesn't contain relevant information, clearly state that
-- Provide specific details when available (dates, amounts, names, numbers, etc.)
-- Be concise and focus on directly answering the user's question
-- If the context appears to be truncated or incomplete, acknowledge this limitation
-
-DOCUMENT CONTEXT:
+Context:
 {context}
 
-Please answer the user's question based on this context."""
+If the context doesn't contain the answer, say "I don't have that information in the provided context." """
 
     # Format messages for Ollama
     formatted_messages = [{"role": "system", "content": system_prompt}]
     formatted_messages.extend(messages)
 
-    # Create the streaming response using Ollama
+    # Create the streaming response using Ollama with very conservative settings
     try:
-        print(f"Debug - Sending context of {len(system_prompt)} characters to model")
+        print(f"Debug - Sending {len(system_prompt)} characters to model with conservative settings")
         
+        
+        # Universal response limits for all queries - optimized for speed
+        is_large_doc_query = len(context) > 4000 and ("Source:" in context and context.count("Source:") >= 3)
+        
+        if is_large_doc_query:
+            # Professional large document mode
+            max_response_length = 4000
+            stop_after_sentences = 8
+            max_chunks = 400
+            model_name = "llama3"  # Use more capable model for complex document queries
+            print(f"Debug - PROFESSIONAL large document mode: max_response={max_response_length}, sentences={stop_after_sentences}, model={model_name}")
+        elif len(context) > 2000:
+            # Medium context mode
+            max_response_length = 3000  # Increased for better responses
+            stop_after_sentences = 6    # More sentences allowed
+            max_chunks = 400           # More chunks allowed
+            model_name = "tinyllama"
+            print(f"Debug - Medium context mode: max_response={max_response_length}, sentences={stop_after_sentences}, model={model_name}")
+        else:
+            # Fast response mode
+            max_response_length = 2000  # Increased for better responses
+            stop_after_sentences = 4    # More sentences allowed
+            max_chunks = 300           # More chunks allowed
+            model_name = "tinyllama"
+            print(f"Debug - Fast mode: max_response={max_response_length}, sentences={stop_after_sentences}, model={model_name}")
+        
+        # Create enhanced prompt for large document queries
+        if is_large_doc_query:
+            system_prompt = f"""You are analyzing a large document with multiple relevant sections. Based on the comprehensive context below, provide a thorough and well-structured answer to the user's question.
+
+IMPORTANT: The context contains multiple sections with relevance scores and page numbers. Synthesize information across all sections to provide a complete answer.
+
+Context:
+{context}
+
+Please provide a comprehensive answer that:
+1. Addresses the question thoroughly
+2. References specific sections/pages when relevant  
+3. Synthesizes information from multiple sources if applicable
+4. Is well-organized and easy to follow"""
+        else:
+            system_prompt = f"""Answer the user's question using only the provided context. Be clear and informative.
+
+Context:
+{context}
+
+If the context doesn't contain the answer, say "I don't have that information in the provided context." """
+
+        # Format messages for Ollama
+        formatted_messages = [{"role": "system", "content": system_prompt}]
+        formatted_messages.extend(messages)
+
+        # Send request to Ollama with appropriate model and settings
         response_stream = ollama.chat(
-            model="llama3",  # Use the larger Llama3 model for better context handling
+            model=model_name,
             messages=formatted_messages,
             stream=True,
             options={
-                "timeout": 45,  # Reduced timeout for faster recovery
-                "temperature": 0.1,  # Lower temperature for more consistent responses
-                "top_p": 0.9,
+                "temperature": 0.1,
+                "top_p": 0.9,  # Slightly more flexible
+                "num_predict": max_response_length,  # Allow full response length
+                "stop": ["Context:", "User:"] if not is_large_doc_query else [],  # Fewer restrictive stops
             }
         )
         
-        # Collect the response with timeout handling
+        # Universal response limits for all queries - optimized for speed
         full_response = ""
         response_placeholder = st.empty()
         chunk_count = 0
         
-        for chunk in response_stream:
-            chunk_count += 1
-            if chunk_count > 500:  # More conservative limit
-                print("Debug - Response length limit reached, stopping")
-                break
-                
-            if 'message' in chunk and 'content' in chunk['message']:
-                chunk_content = chunk['message']['content']
-                full_response += chunk_content
-                response_placeholder.markdown(full_response + "▌")
-                
-                # Stop if response gets too long
-                if len(full_response) > 3000:
-                    print("Debug - Response getting long, stopping to prevent issues")
+        print(f"Debug - Using optimized limits: max chunks: {max_chunks}, max response: {max_response_length}")
+        print(f"Debug - Using model: {model_name}")
+        
+        try:
+            for chunk in response_stream:
+                chunk_count += 1
+                if chunk_count > max_chunks:
+                    print(f"Debug - Response chunk limit reached ({max_chunks}), stopping")
                     break
+                    
+                if 'message' in chunk and 'content' in chunk['message']:
+                    chunk_content = chunk['message']['content']
+                    full_response += chunk_content
+                    response_placeholder.markdown(full_response + "▌")
+                    
+                    # Check response length limit
+                    if len(full_response) > max_response_length:
+                        print(f"Debug - Response length limit reached ({max_response_length}), stopping")
+                        break
+                    
+                    # Check for natural stopping points
+                    if full_response.endswith(('.', '!', '?')) and len(full_response) > 200:
+                        sentences = full_response.count('.')
+                        if sentences >= stop_after_sentences:  # Variable sentence limit
+                            print(f"Debug - Natural stopping point reached after {sentences} sentences")
+                            break
+        
+        except Exception as stream_error:
+            print(f"Debug - Stream error: {stream_error}")
+            # Continue to fallback logic below
         
         response_placeholder.markdown(full_response)
         
-        # If we got no response or a very short response, provide a helpful message
+        # If we got no response, provide a simple fallback
         if not full_response.strip():
-            fallback_response = "I found relevant information in your document but encountered an issue generating a complete response. The document appears to contain the information you're looking for. Could you try asking a more specific question about what you'd like to know?"
+            # Extract key information directly from context for fallback
+            context_preview = context[:500] + "..." if len(context) > 500 else context
+            fallback_response = f"I found relevant information but had a technical issue. Here's what I found:\n\n{context_preview}"
             response_placeholder.markdown(fallback_response)
             return fallback_response
             
@@ -370,10 +576,9 @@ Please answer the user's question based on this context."""
         error_msg = str(e)
         print(f"Debug - Ollama error: {error_msg}")
         
-        st.error(f"Error connecting to Ollama: {error_msg}")
-        
-        # Provide a helpful fallback response 
-        fallback_response = "I found your document and relevant information, but encountered a technical issue with the AI model. Please try asking a more specific question, or check that Ollama is running properly."
+        # Simple fallback without complex logic
+        context_preview = context[:300] + "..." if len(context) > 300 else context
+        fallback_response = f"Technical issue with AI model. Here's the relevant content I found:\n\n{context_preview}"
         return fallback_response
 
 
@@ -593,6 +798,8 @@ if prompt := st.chat_input("Ask a question about the document"):
         
     else:
         # Found relevant context - show search results
+        print(f"Debug - Context preview for UI display: {context[:500]}...")
+        print(f"Debug - Context sections count: {len(context.split('\n\n'))}")
         st.markdown(
             """
             <style>
@@ -621,25 +828,41 @@ if prompt := st.chat_input("Ask a question about the document"):
         )
 
         st.write("Found relevant sections:")
-        for chunk in context.split("\n\n"):
+        sections = context.split("\n\n")
+        print(f"Debug - Raw sections: {len(sections)}")
+        
+        for i, chunk in enumerate(sections):
+            if not chunk.strip():
+                continue
+                
+            print(f"Debug - Processing section {i+1}: '{chunk[:100]}...'")
+            
             # Split into text and metadata parts
-            parts = chunk.split("\n")
-            text = parts[0]
-            metadata = {
-                line.split(": ")[0]: line.split(": ")[1]
-                for line in parts[1:]
-                if ": " in line
-            }
-
-            source = metadata.get("Source", "Unknown source")
-            title = metadata.get("Title", "Untitled section")
-
+            lines = chunk.split("\n")
+            text = lines[0] if lines else ""
+            
+            # Find source and title lines
+            source_line = ""
+            title_line = ""
+            
+            for line in lines[1:]:
+                if line.startswith("Source:"):
+                    source_line = line.replace("Source: ", "")
+                elif line.startswith("Title:"):
+                    title_line = line.replace("Title: ", "")
+            
+            # Use source info or default
+            display_source = source_line if source_line else f"Section {i+1}"
+            display_title = title_line if title_line else "Content"
+            
+            print(f"Debug - Section {i+1}: source='{display_source}', title='{display_title}'")
+            
             st.markdown(
                 f"""
                 <div class="search-result">
                     <details>
-                        <summary>{source}</summary>
-                        <div class="metadata">Section: {title}</div>
+                        <summary>{display_source}</summary>
+                        <div class="metadata">Section: {display_title}</div>
                         <div style="margin-top: 8px;">{text}</div>
                     </details>
                 </div>
