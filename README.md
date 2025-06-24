@@ -1,23 +1,53 @@
-# 📚 Docling + Ollama + Llama 3 Pipeline
+# Do## 🚀 Quick Start
 
-> **Please read all documentation in the `docs/` folder**
+```bash
+# Install dependencies
+pip install -r docs/requirements.txt
+
+# Run the Streamlit app
+streamlit run app.py
+
+# Or test the pipeline directly
+python quick_test.py
+```A Pipeline
+
+A clean, robust document processing and question-answering system using **Docling → LangChain → Streamlit**.
+
+## � Quick Start
+
+```bash
+# Install dependencies
+pip install -r docs/requirements.txt
+
+# Run the complete pipeline
+python 5-chat.py
+```
+
+## 📁 File Structure
+
+- **`1-extraction.py`** - Document extraction
+- **`2-chunking.py`** - Text chunking  
+- **`3-embedding.py`** - Vector embeddings
+- **`4-search.py`** - Document search
+- **`5-chat.py`** - Complete Q&A pipeline ⭐
+
+### Debug Tools
+- **`debug-*.py`** - Component-specific debugging
+- **`debug_utils.py`** - General utilities
+- **`check_docling_status.py`** - System verification
 
 ## 📖 Documentation
 
-All project documentation, setup guides, and configuration files are located in the **`docs/`** folder:
+**➡️ See `docs/README.md` for complete documentation, architecture, and troubleshooting.**
 
-- **[📋 docs/README.md](docs/README.md)** - Complete project overview and features
-- **[⚙️ docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md)** - Detailed installation instructions  
-- **[🚀 docs/QUICK_START.md](docs/QUICK_START.md)** - Fast setup checklist
-- **[🔧 docs/DEBUG_GUIDE.md](docs/DEBUG_GUIDE.md)** - Troubleshooting and testing
-- **[📦 docs/requirements.txt](docs/requirements.txt)** - Python dependencies
+## 🎯 Current Version: v0.0.13
 
-## 🚀 Quick Start
-
-1. **Install dependencies**: `pip install -r docs/requirements.txt`
-2. **Follow setup**: See [docs/SETUP_GUIDE.md](docs/SETUP_GUIDE.md)
-3. **Run pipeline**: Execute scripts 1-5 in order
-4. **Debug if needed**: Use `debug-X-[step].py` files for troubleshooting
+Complete pipeline rewrite with:
+- Quality filtering for corrupted text
+- Streamlit UI with document management
+- FAISS vector search
+- Ollama LLM integration
+- Robust error handling
 
 ---
 

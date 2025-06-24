@@ -1,13 +1,197 @@
-# Building Knowledge Extraction Pipeline with Docling + Ollama + Llama 3
+# Document Q&A Pipeline
 
-[Docling](https://github.com/DS4SD/docling) is a powerful, flexible open source document processing library that converts various document formats into a unified format. It has advanced document understanding capabilities powered by state-of-the-art AI models for layout analysis and table structure recognition.
+A robust document processing and question-answering system using Docling, LangChain, and Streamlit.
 
-This project combines Docling with **Ollama and Llama 3** for a completely local AI pipeline - no external API keys required! The whole system runs locally on standard computers and is designed to be extensible.
+## 🚀 Quick Start
 
-## Key Features
+1. **Install dependencies:**
+   ```bash
+   pip install -r docs/requirements.txt
+   ```
 
-- **Universal Format Support**: Process PDF, DOCX, XLSX, PPTX, Markdown, HTML, images, and more
-- **Advanced Understanding**: AI-powered layout analysis and table structure recognition  
+2. **Start Ollama (if not running):**
+   ```bash
+   ollama serve
+   ollama pull llama3:latest
+   ```
+
+3. **Run the pipeline:**
+   ```bash
+   python 5-chat.py
+   ```
+
+## 📁 Project Structure
+
+### Core Pipeline Files
+- **`1-extraction.py`** - Document extraction using Docling
+- **`2-chunking.py`** - Text chunking and preprocessing  
+- **`3-embedding.py`** - Vector embeddings generation
+- **`4-search.py`** - Document search and retrieval
+- **`5-chat.py`** - Complete Q&A pipeline with Streamlit UI
+
+### Debug & Utilities
+- **`debug-1-extraction.py`** - Debug extraction issues
+- **`debug-2-chunking.py`** - Debug chunking problems
+- **`debug-3-embedding.py`** - Debug embedding generation
+- **`debug-4-search.py`** - Debug search functionality
+- **`debug-5-chat.py`** - Debug chat/QA issues
+- **`debug_database_content.py`** - Database content inspection
+- **`debug_utils.py`** - General debugging utilities
+- **`check_docling_status.py`** - Verify Docling installation
+
+## 🛠️ System Architecture
+
+### Pipeline Flow
+```
+Documents → Docling → Chunking → Embeddings → FAISS Index → LangChain QA → Streamlit UI
+```
+
+### Components
+
+#### 1. Document Processing (Docling)
+- Supports PDF, DOCX, TXT, MD, images
+- Handles encrypted/protected PDFs with OCR fallback
+- Extracts text, tables, and metadata
+- Converts to clean markdown format
+
+#### 2. Text Processing (LangChain)
+- **Chunking**: 1000 chars with 200 char overlap
+- **Embeddings**: HuggingFace all-MiniLM-L6-v2
+- **Vector Store**: FAISS for fast similarity search
+- **Quality Filtering**: Removes corrupted/repetitive text
+
+#### 3. Question Answering
+- **LLM**: Ollama (llama3:latest)
+- **Retrieval**: Top-3 relevant chunks
+- **Context**: Source attribution included
+- **Chain Type**: "stuff" (concatenate contexts)
+
+#### 4. User Interface
+- **Streamlit**: Clean, responsive web interface
+- **Features**: Document upload, chat history, source display
+- **Management**: Add/remove documents, rebuild index
+
+## 📋 Supported File Formats
+
+| Format | Method | Notes |
+|--------|--------|-------|
+| PDF | Docling | Handles text, images, tables |
+| DOCX | Docling | Full document structure |
+| TXT | Direct read | Plain text files |
+| MD | Direct read | Markdown files |
+| Images | Docling + OCR | PNG, JPG, JPEG |
+
+## 🔧 Configuration
+
+### Default Settings
+- **Chunk size**: 1000 characters
+- **Chunk overlap**: 200 characters
+- **Retrieval**: Top 3 documents
+- **Model**: llama3:latest
+- **Embeddings**: all-MiniLM-L6-v2
+
+### Environment Variables
+```bash
+# Optional: Set custom model
+OLLAMA_MODEL=llama3:latest
+
+# Optional: Set data directories
+DOCS_DIR=data/documents
+INDEX_DIR=data/index
+```
+
+## 🧪 Testing & Debugging
+
+### Run Tests
+```bash
+# Test individual components
+python debug-1-extraction.py
+python debug-2-chunking.py
+python debug-3-embedding.py
+python debug-4-search.py
+python debug-5-chat.py
+
+# Check system status
+python check_docling_status.py
+
+# Inspect database
+python debug_database_content.py
+```
+
+### Common Issues
+
+#### 1. Model Not Found
+```bash
+# Pull the required model
+ollama pull llama3:latest
+
+# Check available models
+ollama list
+```
+
+#### 2. Docling Format Errors
+- Check file permissions
+- Verify file isn't corrupted
+- Try OCR fallback for images/scanned PDFs
+
+#### 3. Empty Search Results
+- Rebuild index: Use Streamlit "Rebuild Index" button
+- Check document processing logs
+- Verify embeddings are generated
+
+#### 4. Slow Performance
+- Use smaller model: `tinyllama:latest`
+- Reduce chunk size in configuration
+- Limit retrieval documents (k parameter)
+
+## 📊 Performance Guidelines
+
+### Document Limits
+- **Small files** (< 1MB): Process immediately
+- **Medium files** (1-10MB): May take 30-60 seconds
+- **Large files** (> 10MB): Consider splitting first
+
+### Memory Usage
+- **Embeddings**: ~100MB for model loading
+- **FAISS Index**: ~1KB per document chunk
+- **LLM**: Depends on Ollama model size
+
+## 🔄 Version History
+
+- **v0.0.13**: Complete pipeline rewrite with quality filtering
+- **v0.0.08**: Base model working with debug tools
+- **v0.0.07**: Major refactor of all components
+- **v0.0.02**: Initial extraction and search functionality
+
+## 📚 Dependencies
+
+See `docs/requirements.txt` for complete list. Key dependencies:
+- `docling` - Document processing
+- `langchain` - QA framework  
+- `streamlit` - Web interface
+- `faiss-cpu` - Vector search
+- `sentence-transformers` - Embeddings
+- `ollama` - Local LLM
+
+## 🤝 Usage Tips
+
+1. **Start small**: Test with a few simple documents first
+2. **Monitor logs**: Check console output for processing status
+3. **Use debug tools**: Isolate issues with specific debug scripts
+4. **Quality matters**: Clean, well-formatted documents work best
+5. **Be patient**: Large documents take time to process
+
+## 🆘 Troubleshooting
+
+If you encounter issues:
+
+1. Check the debug scripts for the specific component
+2. Verify all dependencies are installed
+3. Make sure Ollama is running with the correct model
+4. Check file permissions and formats
+5. Look at the console logs for detailed error messages
+
+For persistent issues, check the individual debug files in the project root.  
 - **Flexible Output**: Export to HTML, Markdown, JSON, or plain text
 - **High Performance**: Efficient processing on local hardware
 - **Local AI**: Uses Ollama with Llama 3 for chat responses
