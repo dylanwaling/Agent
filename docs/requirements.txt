@@ -16,3 +16,7 @@ python-dotenv
 docling
 tiktoken
 transformers
+langchain
+langchain-community
+langchain-core
+langchain-ollama

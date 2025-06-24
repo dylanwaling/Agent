@@ -9,8 +9,156 @@ from docling.document_converter import DocumentConverter
 from docling.chunking import HybridChunker
 from utils.tokenizer import OpenAITokenizerWrapper
 
+# LangChain imports
+from langchain_core.documents import Document
+from langchain_community.vectorstores import LanceDB as LangChainLanceDB
+from langchain_ollama import OllamaLLM
+from langchain.chains import RetrievalQA
+from langchain_community.embeddings import SentenceTransformerEmbeddings
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_core.prompts import PromptTemplate
+
 # Initialize the embedding model (same as used for creating embeddings)
 model = SentenceTransformer('BAAI/bge-small-en-v1.5')
+
+# LangChain Configuration
+USE_LANGCHAIN = True  # Toggle between LangChain and legacy implementation
+LANGCHAIN_MODEL = "tinyllama"  # Default model for LangChain
+
+
+# Initialize LangChain components
+@st.cache_resource
+def init_langchain_components():
+    """Initialize LangChain components for RAG pipeline"""
+    try:
+        # Initialize LLM
+        llm = OllamaLLM(
+            model=LANGCHAIN_MODEL,
+            base_url="http://localhost:11434",
+            temperature=0.1,
+            num_predict=2000,
+        )
+        
+        # Initialize embeddings
+        embeddings = SentenceTransformerEmbeddings(model_name='BAAI/bge-small-en-v1.5')
+        
+        # Custom prompt template for better responses
+        prompt_template = """Use the following pieces of context to answer the question at the end. 
+        If you don't know the answer, just say that you don't have that information.
+
+        Context:
+        {context}
+
+        Question: {question}
+        Answer:"""
+        
+        PROMPT = PromptTemplate(
+            template=prompt_template, 
+            input_variables=["context", "question"]
+        )
+        
+        return llm, embeddings, PROMPT
+        
+    except Exception as e:
+        st.error(f"Failed to initialize LangChain components: {e}")
+        return None, None, None
+
+
+@st.cache_resource
+def init_langchain_vectorstore():
+    """Initialize LangChain vector store from existing LanceDB data"""
+    try:
+        # Connect to existing LanceDB
+        db = lancedb.connect("data/lancedb")
+        table = db.open_table("docling")
+        
+        # Convert existing data to LangChain Documents
+        df = table.to_pandas()
+        
+        documents = []
+        for _, row in df.iterrows():
+            # Create Document with text and metadata
+            doc = Document(
+                page_content=row.get('text', ''),
+                metadata={
+                    'filename': row.get('filename', ''),
+                    'page_numbers': row.get('page_numbers', []),
+                    'title': row.get('title', ''),
+                    'source': f"{row.get('filename', 'Unknown')} - {row.get('title', 'No title')}"
+                }
+            )
+            documents.append(doc)
+        
+        # Initialize embeddings
+        _, embeddings, _ = init_langchain_components()
+        if embeddings is None:
+            return None
+            
+        # Create vector store (this will create embeddings if needed)
+        vectorstore = LangChainLanceDB.from_documents(
+            documents=documents,
+            embedding=embeddings,
+            uri="data/lancedb_langchain",  # Separate database for LangChain
+        )
+        
+        return vectorstore
+        
+    except Exception as e:
+        st.error(f"Failed to initialize LangChain vector store: {e}")
+        return None
+
+
+def get_langchain_response(query: str, model_name: str = None) -> str:
+    """Get response using LangChain RetrievalQA chain"""
+    try:
+        # Use provided model or default
+        current_model = model_name or LANGCHAIN_MODEL
+        
+        # Initialize components
+        llm = OllamaLLM(
+            model=current_model,
+            base_url="http://localhost:11434",
+            temperature=0.1,
+            num_predict=2000,
+        )
+        
+        vectorstore = init_langchain_vectorstore()
+        
+        if vectorstore is None:
+            return "Failed to initialize LangChain vector store. Please check your data."
+        
+        # Initialize embeddings and prompt
+        _, embeddings, prompt = init_langchain_components()
+        
+        # Create retrieval QA chain
+        qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            chain_type="stuff",  # "stuff", "map_reduce", or "refine"
+            retriever=vectorstore.as_retriever(
+                search_kwargs={"k": 5}  # Number of documents to retrieve
+            ),
+            chain_type_kwargs={"prompt": prompt},
+            return_source_documents=True
+        )
+        
+        # Get response
+        result = qa_chain({"query": query})
+        
+        # Format response with sources
+        response = result.get("result", "No response generated")
+        source_docs = result.get("source_documents", [])
+        
+        if source_docs:
+            response += "\n\n**Sources:**\n"
+            for i, doc in enumerate(source_docs[:3], 1):  # Show top 3 sources
+                filename = doc.metadata.get('filename', 'Unknown')
+                title = doc.metadata.get('title', 'No title')
+                response += f"{i}. {filename} - {title}\n"
+        
+        return response
+        
+    except Exception as e:
+        return f"Error generating LangChain response: {str(e)}"
 
 
 # Initialize LanceDB connection
@@ -737,6 +885,33 @@ with st.sidebar:
     
     st.divider()
     
+# Add LangChain toggle in sidebar
+with st.sidebar:
+    st.divider()
+    st.subheader("🔧 Settings")
+    
+    # LangChain toggle
+    use_langchain = st.checkbox(
+        "🦜 Use LangChain RAG", 
+        value=USE_LANGCHAIN,
+        help="Toggle between LangChain and legacy implementation"
+    )
+    
+    if use_langchain:
+        langchain_model = st.selectbox(
+            "Model",
+            options=["tinyllama", "llama3"],
+            index=0 if LANGCHAIN_MODEL == "tinyllama" else 1,
+            help="Select the Ollama model to use"
+        )
+        
+        chain_type = st.selectbox(
+            "Chain Type",
+            options=["stuff", "map_reduce", "refine"],
+            index=0,
+            help="stuff: Simple context stuffing\nmap_reduce: Parallel processing\nrefine: Iterative refinement"
+        )
+    
     # Database status
     st.subheader("📊 Database Status")
     try:
@@ -778,120 +953,139 @@ if prompt := st.chat_input("Ask a question about the document"):
     # Add user message to chat history
     st.session_state.messages.append({"role": "user", "content": prompt})
 
-    # Get relevant context
-    # Show a temporary status message
+    # Show processing status
     search_placeholder = st.empty()
-    search_placeholder.info("🔍 Searching documents...")
     
-    context = get_context(prompt, table)
-    
-    # Clear the search status
-    search_placeholder.empty()
-    
-    if not context:
-        # No relevant documents found
+    # Choose between LangChain and legacy implementation
+    if use_langchain:
+        search_placeholder.info("🦜 Processing with LangChain...")
+        
+        # Display assistant response
         with st.chat_message("assistant"):
-            no_context_response = "I couldn't find any relevant documents to answer your question. Please try asking about topics covered in your uploaded documents, or consider uploading more documents that might contain the information you're looking for."
-            st.markdown(no_context_response)
+            # Get LangChain response with selected model
+            current_model = langchain_model if 'langchain_model' in locals() else LANGCHAIN_MODEL
+            response = get_langchain_response(prompt, current_model)
+            st.markdown(response)
             
         # Add assistant response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": no_context_response})
+        st.session_state.messages.append({"role": "assistant", "content": response})
         
     else:
-        # Found relevant context - show search results
-        print(f"Debug - Context preview for UI display: {context[:500]}...")
-        print(f"Debug - Context sections count: {len(context.split('\n\n'))}")
-        st.markdown(
-            """
-            <style>
-            .search-result {
-                margin: 10px 0;
-                padding: 10px;
-                border-radius: 4px;
-                background-color: #f0f2f6;
-            }
-            .search-result summary {
-                cursor: pointer;
-                color: #0f52ba;
-                font-weight: 500;
-            }
-            .search-result summary:hover {
-                color: #1e90ff;
-            }
-            .metadata {
-                font-size: 0.9em;
-                color: #666;
-                font-style: italic;
-            }
-            </style>
-        """,
-            unsafe_allow_html=True,
-        )
-
-        st.write("Found relevant sections:")
-        sections = context.split("\n\n")
-        print(f"Debug - Raw sections: {len(sections)}")
+        # Legacy implementation
+        search_placeholder.info("🔍 Searching documents (Legacy)...")
         
-        for i, chunk in enumerate(sections):
-            if not chunk.strip():
-                continue
+        context = get_context(prompt, table)
+        
+        # Clear the search status
+        search_placeholder.empty()
+        
+        if not context:
+            # No relevant documents found
+            with st.chat_message("assistant"):
+                no_context_response = "I couldn't find any relevant documents to answer your question. Please try asking about topics covered in your uploaded documents, or consider uploading more documents that might contain the information you're looking for."
+                st.markdown(no_context_response)
                 
-            print(f"Debug - Processing section {i+1}: '{chunk[:100]}...'")
+            # Add assistant response to chat history
+            st.session_state.messages.append({"role": "assistant", "content": no_context_response})
             
-            # Split into text and metadata parts
-            lines = chunk.split("\n")
-            text = lines[0] if lines else ""
-            
-            # Find source and title lines - look for lines containing source info
-            source_line = ""
-            title_line = ""
-            
-            for line in lines[1:]:
-                if "Source:" in line:
-                    # Extract everything after "Source:"
-                    source_start = line.find("Source:")
-                    source_line = line[source_start + 7:].strip()  # +7 to skip "Source:"
-                elif line.startswith("Title:"):
-                    title_line = line.replace("Title: ", "")
-                elif line.startswith("[Relevance:") and "Source:" in line:
-                    # Handle lines with both relevance and source
-                    source_start = line.find("Source:")
-                    source_line = line[source_start + 7:].strip()
-            
-            # Use source info or create a meaningful default
-            if source_line:
-                display_source = source_line
-            else:
-                # Try to extract filename from text if it looks like a document reference
-                if "1 Jan.pdf" in chunk or "2408.09869v5.pdf" in chunk:
-                    if "1 Jan.pdf" in chunk:
-                        display_source = "1 Jan.pdf"
-                    else:
-                        display_source = "2408.09869v5.pdf"
-                else:
-                    display_source = f"Section {i+1}"
-            
-            display_title = title_line if title_line else "Content"
-            
-            print(f"Debug - Section {i+1}: source='{display_source}', title='{display_title}'")
-            
+        else:
+            # Found relevant context - show search results (legacy display)
+            print(f"Debug - Context preview for UI display: {context[:500]}...")
+            print(f"Debug - Context sections count: {len(context.split('\n\n'))}")
             st.markdown(
-                f"""
-                <div class="search-result">
-                    <details>
-                        <summary>{display_source}</summary>
-                        <div class="metadata">Section: {display_title}</div>
-                        <div style="margin-top: 8px;">{text}</div>
-                    </details>
-                </div>
+                """
+                <style>
+                .search-result {
+                    margin: 10px 0;
+                    padding: 10px;
+                    border-radius: 4px;
+                    background-color: #f0f2f6;
+                }
+                .search-result summary {
+                    cursor: pointer;
+                    color: #0f52ba;
+                    font-weight: 500;
+                }
+                .search-result summary:hover {
+                    color: #1e90ff;
+                }
+                .metadata {
+                    font-size: 0.9em;
+                    color: #666;
+                    font-style: italic;
+                }
+                </style>
             """,
                 unsafe_allow_html=True,
             )
 
-        # Display assistant response with context
-        with st.chat_message("assistant"):
-            # Get model response with streaming
-            response = get_chat_response(st.session_state.messages, context)
+            st.write("Found relevant sections:")
+            sections = context.split("\n\n")
+            print(f"Debug - Raw sections: {len(sections)}")
+            
+            for i, chunk in enumerate(sections):
+                if not chunk.strip():
+                    continue
+                    
+                print(f"Debug - Processing section {i+1}: '{chunk[:100]}...'")
+                
+                # Split into text and metadata parts
+                lines = chunk.split("\n")
+                text = lines[0] if lines else ""
+                
+                # Find source and title lines - look for lines containing source info
+                source_line = ""
+                title_line = ""
+                
+                for line in lines[1:]:
+                    if "Source:" in line:
+                        # Extract everything after "Source:"
+                        source_start = line.find("Source:")
+                        source_line = line[source_start + 7:].strip()  # +7 to skip "Source:"
+                    elif line.startswith("Title:"):
+                        title_line = line.replace("Title: ", "")
+                    elif line.startswith("[Relevance:") and "Source:" in line:
+                        # Handle lines with both relevance and source
+                        source_start = line.find("Source:")
+                        source_line = line[source_start + 7:].strip()
+                
+                # Use source info or create a meaningful default
+                if source_line:
+                    display_source = source_line
+                else:
+                    # Try to extract filename from text if it looks like a document reference
+                    if "1 Jan.pdf" in chunk or "2408.09869v5.pdf" in chunk:
+                        if "1 Jan.pdf" in chunk:
+                            display_source = "1 Jan.pdf"
+                        else:
+                            display_source = "2408.09869v5.pdf"
+                    else:
+                        display_source = f"Section {i+1}"
+                
+                display_title = title_line if title_line else "Content"
+                
+                print(f"Debug - Section {i+1}: source='{display_source}', title='{display_title}'")
+                
+                st.markdown(
+                    f"""
+                    <div class="search-result">
+                        <details>
+                            <summary>{display_source}</summary>
+                            <div class="metadata">Section: {display_title}</div>
+                            <div style="margin-top: 8px;">{text}</div>
+                        </details>
+                    </div>
+                """,
+                    unsafe_allow_html=True,
+                )
 
-        # Add assistant response to chat history
-        st.session_state.messages.append({"role": "assistant", "content": response})
+            # Display assistant response with context
+            with st.chat_message("assistant"):
+                # Get model response with streaming
+                response = get_chat_response(st.session_state.messages, context)
+
+            # Add assistant response to chat history
+            st.session_state.messages.append({"role": "assistant", "content": response})
+    
+    # Clear the search status
+    search_placeholder.empty()

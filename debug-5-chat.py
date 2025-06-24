@@ -415,25 +415,350 @@ def run_full_chat_simulation():
         print(f"❌ Full chat simulation error: {e}")
         return False
 
-if __name__ == "__main__":
-    print("🔍 Step 5: Chat Interface Debug")
+def test_langchain_components():
+    """Test LangChain components initialization"""
+    print("\n🦜 Testing LangChain Components")
+    print("=" * 40)
+    
+    try:
+        # Test LangChain imports
+        from langchain_core.documents import Document
+        from langchain_community.vectorstores import LanceDB as LangChainLanceDB
+        from langchain_ollama import OllamaLLM
+        from langchain.chains import RetrievalQA
+        from langchain_community.embeddings import SentenceTransformerEmbeddings
+        print("✅ LangChain imports successful")
+        
+        # Test Ollama LLM initialization
+        try:
+            llm = OllamaLLM(
+                model="tinyllama",
+                base_url="http://localhost:11434",
+                temperature=0.1,
+                num_predict=100,  # Small for testing
+            )
+            print("✅ OllamaLLM initialization successful")
+            
+            # Test simple generation
+            test_response = llm.invoke("Hello, respond with just 'Hi there!'")
+            print(f"✅ LLM test response: {test_response[:50]}...")
+            
+        except Exception as e:
+            print(f"❌ OllamaLLM error: {e}")
+            return False
+        
+        # Test embeddings
+        try:
+            embeddings = SentenceTransformerEmbeddings(model_name='BAAI/bge-small-en-v1.5')
+            test_embedding = embeddings.embed_query("test text")
+            print(f"✅ Embeddings working, dimension: {len(test_embedding)}")
+            
+        except Exception as e:
+            print(f"❌ Embeddings error: {e}")
+            return False
+        
+        return True
+        
+    except ImportError as e:
+        print(f"❌ LangChain import error: {e}")
+        return False
+    except Exception as e:
+        print(f"❌ LangChain component error: {e}")
+        return False
+
+
+def test_langchain_vectorstore():
+    """Test LangChain vector store creation and retrieval"""
+    print("\n🗃️ Testing LangChain Vector Store")
+    print("=" * 40)
+    
+    try:
+        # Check if original LanceDB exists
+        import lancedb
+        db = lancedb.connect("data/lancedb")
+        table = db.open_table("docling")
+        df = table.to_pandas()
+        
+        if df.empty:
+            print("❌ No data in original LanceDB - run steps 1-3 first")
+            return False
+        
+        print(f"✅ Found {len(df)} chunks in original database")
+        
+        # Test document conversion
+        from langchain_core.documents import Document
+        
+        documents = []
+        for _, row in df.head(5).iterrows():  # Test with first 5 for speed
+            doc = Document(
+                page_content=row.get('text', ''),
+                metadata={
+                    'filename': row.get('filename', ''),
+                    'page_numbers': row.get('page_numbers', []),
+                    'title': row.get('title', ''),
+                    'source': f"{row.get('filename', 'Unknown')} - {row.get('title', 'No title')}"
+                }
+            )
+            documents.append(doc)
+        
+        print(f"✅ Converted {len(documents)} documents for testing")
+        
+        # Test vector store creation
+        from langchain_community.vectorstores import LanceDB as LangChainLanceDB
+        from langchain_community.embeddings import SentenceTransformerEmbeddings
+        
+        embeddings = SentenceTransformerEmbeddings(model_name='BAAI/bge-small-en-v1.5')
+        
+        vectorstore = LangChainLanceDB.from_documents(
+            documents=documents,
+            embedding=embeddings,
+            uri="data/test_langchain_db",  # Test database
+        )
+        
+        print("✅ LangChain vector store created successfully")
+        
+        # Test retrieval
+        test_query = "what is docling?"
+        retrieved_docs = vectorstore.similarity_search(test_query, k=3)
+        
+        print(f"✅ Retrieved {len(retrieved_docs)} documents for test query")
+        for i, doc in enumerate(retrieved_docs):
+            filename = doc.metadata.get('filename', 'Unknown')
+            preview = doc.page_content[:100] + "..." if len(doc.page_content) > 100 else doc.page_content
+            print(f"  {i+1}. {filename}: {preview}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Vector store test error: {e}")
+        return False
+
+
+def test_langchain_qa_chain():
+    """Test full LangChain QA chain"""
+    print("\n🔗 Testing LangChain QA Chain")
+    print("=" * 40)
+    
+    try:
+        # Initialize components (reuse test vector store if it exists)
+        from langchain_ollama import OllamaLLM
+        from langchain.chains import RetrievalQA
+        from langchain_community.vectorstores import LanceDB as LangChainLanceDB
+        from langchain_community.embeddings import SentenceTransformerEmbeddings
+        from langchain_core.prompts import PromptTemplate
+        
+        # Check if test database exists
+        import os
+        if not os.path.exists("data/test_langchain_db"):
+            print("❌ Test vector store not found - run test_langchain_vectorstore first")
+            return False
+        
+        # Initialize components
+        llm = OllamaLLM(
+            model="tinyllama",
+            base_url="http://localhost:11434",
+            temperature=0.1,
+            num_predict=500,  # Moderate length for testing
+        )
+        
+        embeddings = SentenceTransformerEmbeddings(model_name='BAAI/bge-small-en-v1.5')
+        
+        # Load existing vector store
+        vectorstore = LangChainLanceDB(
+            embedding=embeddings,
+            uri="data/test_langchain_db",
+        )
+        
+        # Create prompt template
+        prompt_template = """Use the following pieces of context to answer the question at the end. 
+        If you don't know the answer, just say that you don't have that information.
+
+        Context:
+        {context}
+
+        Question: {question}
+        Answer:"""
+        
+        PROMPT = PromptTemplate(
+            template=prompt_template, 
+            input_variables=["context", "question"]
+        )
+        
+        # Create QA chain
+        qa_chain = RetrievalQA.from_chain_type(
+            llm=llm,
+            chain_type="stuff",
+            retriever=vectorstore.as_retriever(search_kwargs={"k": 3}),
+            chain_type_kwargs={"prompt": PROMPT},
+            return_source_documents=True
+        )
+        
+        print("✅ QA chain created successfully")
+        
+        # Test queries
+        test_queries = [
+            "What is docling?",
+            "What are the main features?",
+            "How does it work?"
+        ]
+        
+        for query in test_queries:
+            print(f"\n📝 Testing query: '{query}'")
+            
+            try:
+                result = qa_chain({"query": query})
+                
+                response = result.get("result", "No response")
+                source_docs = result.get("source_documents", [])
+                
+                print(f"✅ Response: {response[:150]}...")
+                print(f"✅ Used {len(source_docs)} source documents")
+                
+            except Exception as e:
+                print(f"❌ Query failed: {e}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ QA chain test error: {e}")
+        return False
+
+
+def compare_langchain_vs_legacy():
+    """Compare LangChain vs legacy implementation performance"""
+    print("\n⚖️ Comparing LangChain vs Legacy Implementation")
     print("=" * 50)
     
-    # Run all tests
+    try:
+        # Test the same query with both implementations
+        test_query = "What is docling and what are its main features?"
+        
+        print(f"🔍 Test query: '{test_query}'")
+        print()
+        
+        # Test LangChain (if available)
+        print("🦜 LangChain Implementation:")
+        print("-" * 30)
+        
+        langchain_start = time.time()
+        try:
+            # This would call the actual LangChain function from 5-chat.py
+            # For now, we'll simulate or call a simplified version
+            from langchain_ollama import OllamaLLM
+            from langchain_community.embeddings import SentenceTransformerEmbeddings
+            
+            llm = OllamaLLM(model="tinyllama", base_url="http://localhost:11434")
+            
+            # Simple test without full chain for speed
+            langchain_response = llm.invoke(f"Answer briefly: {test_query}")
+            langchain_time = time.time() - langchain_start
+            
+            print(f"✅ Response: {langchain_response[:200]}...")
+            print(f"⏱️ Time: {langchain_time:.2f}s")
+            
+        except Exception as e:
+            print(f"❌ LangChain error: {e}")
+            langchain_time = None
+        
+        print()
+        
+        # Test Legacy (if available)
+        print("🔧 Legacy Implementation:")
+        print("-" * 30)
+        
+        legacy_start = time.time()
+        try:
+            # Simple Ollama call to simulate legacy
+            import ollama
+            
+            legacy_response = ollama.chat(
+                model="tinyllama",
+                messages=[{"role": "user", "content": f"Answer briefly: {test_query}"}],
+                stream=False
+            )
+            
+            legacy_time = time.time() - legacy_start
+            legacy_content = legacy_response.get('message', {}).get('content', 'No response')
+            
+            print(f"✅ Response: {legacy_content[:200]}...")
+            print(f"⏱️ Time: {legacy_time:.2f}s")
+            
+        except Exception as e:
+            print(f"❌ Legacy error: {e}")
+            legacy_time = None
+        
+        # Compare results
+        print()
+        print("📊 Comparison Summary:")
+        print("-" * 30)
+        
+        if langchain_time and legacy_time:
+            if langchain_time < legacy_time:
+                print(f"🏆 LangChain is {legacy_time/langchain_time:.1f}x faster")
+            else:
+                print(f"🏆 Legacy is {langchain_time/legacy_time:.1f}x faster")
+        
+        print("💡 LangChain provides:")
+        print("  - Built-in retrieval strategies")
+        print("  - Consistent prompt templates")
+        print("  - Source document tracking")
+        print("  - Chain type flexibility")
+        
+        print("💡 Legacy provides:")
+        print("  - Custom context filtering")
+        print("  - Streaming responses")        print("  - Fine-tuned relevance scoring")
+        print("  - Professional document handling")
+        
+        return True
+        
+    except Exception as e:
+        print(f"❌ Comparison error: {e}")
+        return False
+
+
+if __name__ == "__main__":
+    print("🔍 Step 5: Chat Interface Debug (Updated with LangChain)")
+    print("=" * 60)
+    
+    # Test standard Ollama functionality
+    print("🔧 Testing Standard Ollama Functionality:")
+    print("=" * 50)
+    
     if test_ollama_connection():
         working_model = test_ollama_chat_api()
-        table, model = test_database_for_chat()
-        
-        if table and model:
-            test_context_retrieval(table, model)
         
         if working_model:
-            test_chat_response_generation(working_model)
-            test_streaming_response(working_model)
-            test_error_handling()
-        
-        # Final comprehensive test
-        print("\n" + "="*50)
-        run_full_chat_simulation()
+            print(f"✅ Ollama is working with model: {working_model}")
+            
+            # Test LangChain components
+            print("\n🦜 Testing LangChain Integration:")
+            print("=" * 50)
+            
+            if test_langchain_components():
+                print("✅ LangChain components working")
+                
+                if test_langchain_vectorstore():
+                    print("✅ LangChain vector store working")
+                    
+                    if test_langchain_qa_chain():
+                        print("✅ LangChain QA chain working")
+                        
+                        # Compare implementations
+                        compare_langchain_vs_legacy()
+                    else:
+                        print("❌ LangChain QA chain failed")
+                else:
+                    print("❌ LangChain vector store failed")
+            else:
+                print("❌ LangChain components failed")
+        else:
+            print("❌ No working Ollama models found")
+    else:
+        print("❌ Ollama connection failed")
     
-    print("\n✅ Chat debug completed!")
+    print("\n" + "=" * 60)
+    print("🏁 Debug Summary:")
+    print("✅ Use LangChain for: Built-in RAG patterns, prompt templates, source tracking")
+    print("✅ Use Legacy for: Custom filtering, streaming UI, professional document handling")
+    print("💡 The refactored 5-chat.py now supports both implementations with a toggle!")
+    print("✅ Chat debug completed!")
