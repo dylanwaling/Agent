@@ -10,6 +10,7 @@ beautifulsoup4
 easyocr
 PyMuPDF
 streamlit
+flask
 requests
 ollama
 python-dotenv

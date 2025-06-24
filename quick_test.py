@@ -89,9 +89,8 @@ def test_pipeline():
     
     # Create test documents
     create_test_documents()
-    
-    # Initialize pipeline
-    pipeline = DocumentPipeline()
+      # Initialize pipeline with TinyLlama
+    pipeline = DocumentPipeline(model_name="tinyllama:latest")
     
     # Process documents
     print("\n📄 Processing documents...")

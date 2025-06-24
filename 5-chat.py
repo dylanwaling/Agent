@@ -18,6 +18,7 @@ from langchain_community.vectorstores import FAISS
 from langchain_ollama import OllamaLLM
 from langchain.chains import RetrievalQA
 from langchain.schema import Document
+from langchain.prompts import PromptTemplate
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -29,7 +30,7 @@ class DocumentPipeline:
     def __init__(self, 
                  docs_dir: str = "data/documents",
                  index_dir: str = "data/index",
-                 model_name: str = "llama3:latest"):
+                 model_name: str = "tinyllama:latest"):
         
         self.docs_dir = Path(docs_dir)
         self.index_dir = Path(index_dir)
@@ -59,9 +60,19 @@ class DocumentPipeline:
         self.embeddings = HuggingFaceEmbeddings(
             model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
-        
-        # LLM
-        self.llm = OllamaLLM(model=self.model_name)
+          # LLM
+        self.llm = OllamaLLM(model=self.model_name)        # Custom prompt template optimized for TinyLlama
+        self.prompt_template = PromptTemplate(
+            input_variables=["context", "question"],
+            template="""Answer the question using the document content below.
+
+Documents:
+{context}
+
+Question: {question}
+
+Answer:"""
+        )
         
         # Vector store
         self.vectorstore = None
@@ -176,13 +187,13 @@ class DocumentPipeline:
             index_path = str(self.index_dir / "faiss_index")
             self.vectorstore.save_local(index_path)
             logger.info(f"Saved index to {index_path}")
-            
-            # Create QA chain
+              # Create QA chain with custom prompt
             self.qa_chain = RetrievalQA.from_chain_type(
                 llm=self.llm,
                 chain_type="stuff",
                 retriever=self.vectorstore.as_retriever(search_kwargs={"k": 3}),
-                return_source_documents=True
+                return_source_documents=True,
+                chain_type_kwargs={"prompt": self.prompt_template}
             )
             
             logger.info("Document processing complete!")
@@ -205,13 +216,13 @@ class DocumentPipeline:
                 self.embeddings,
                 allow_dangerous_deserialization=True
             )
-            
-            # Create QA chain
+              # Create QA chain with custom prompt
             self.qa_chain = RetrievalQA.from_chain_type(
                 llm=self.llm,
                 chain_type="stuff",
                 retriever=self.vectorstore.as_retriever(search_kwargs={"k": 3}),
-                return_source_documents=True
+                return_source_documents=True,
+                chain_type_kwargs={"prompt": self.prompt_template}
             )
             
             logger.info("Index loaded successfully")
