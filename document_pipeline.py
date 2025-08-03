@@ -199,17 +199,12 @@ Answer based on the documents above:"""
             index_path = str(self.index_dir / "faiss_index")
             self.vectorstore.save_local(index_path)
             logger.info(f"Saved index to {index_path}")
-              # Create QA chain with improved retrieval
+              # Create QA chain with basic retriever (we'll override in ask() method)
             try:
-                # Use similarity search with better filtering to reduce cross-contamination
-                retriever = self.vectorstore.as_retriever(
-                    search_kwargs={
-                        "k": 6,  # Fewer candidates to reduce noise
-                        "fetch_k": 15  # Search through fewer options for more focused results
-                    }
-                )
-            except:
-                # Fallback to basic similarity search
+                # Use basic similarity search - we'll use our enhanced search in ask() method
+                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 6})
+            except Exception as e:
+                logger.warning(f"Failed to create retriever: {e}")
                 retriever = self.vectorstore.as_retriever(search_kwargs={"k": 4})
             
             self.qa_chain = RetrievalQA.from_chain_type(
@@ -240,17 +235,12 @@ Answer based on the documents above:"""
                 self.embeddings,
                 allow_dangerous_deserialization=True
             )
-              # Create QA chain with improved retrieval
+              # Create QA chain with basic retriever (we'll override in ask() method)
             try:
-                # Use similarity search with better filtering to reduce cross-contamination
-                retriever = self.vectorstore.as_retriever(
-                    search_kwargs={
-                        "k": 6,  # Fewer candidates to reduce noise
-                        "fetch_k": 15  # Search through fewer options for more focused results
-                    }
-                )
-            except:
-                # Fallback to basic similarity search
+                # Use basic similarity search - we'll use our enhanced search in ask() method
+                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 6})
+            except Exception as e:
+                logger.warning(f"Failed to create retriever: {e}")
                 retriever = self.vectorstore.as_retriever(search_kwargs={"k": 4})
             
             self.qa_chain = RetrievalQA.from_chain_type(
@@ -337,28 +327,57 @@ Answer based on the documents above:"""
             return []
     
     def ask(self, question: str) -> Dict[str, Any]:
-        """Ask a question about the documents"""
-        if not self.qa_chain:
+        """Ask a question about the documents using enhanced search logic"""
+        if not self.vectorstore:
             return {
                 "answer": "No documents processed yet. Please process documents first.",
                 "sources": []
             }
             
         try:
-            result = self.qa_chain.invoke({"query": question})
+            # Use our enhanced search method directly (same as debug search)
+            search_results = self.search(question)
             
+            if not search_results:
+                return {
+                    "answer": "No relevant documents found for your question.",
+                    "sources": []
+                }
+            
+            # Prepare context from search results
+            context_parts = []
             sources = []
-            if "source_documents" in result:
-                for doc in result["source_documents"]:
-                    # Use original content if available, otherwise use page_content
-                    content = doc.metadata.get("original_content", doc.page_content)
-                    sources.append({
-                        "source": doc.metadata.get("source", "Unknown"),
-                        "content": content[:200] + "..." if len(content) > 200 else content
-                    })
+            
+            for result in search_results[:3]:  # Use top 3 most relevant results
+                # Extract clean content (remove filename prefix)
+                content = result["content"]
+                source_name = result["source"]
+                
+                # Remove filename prefix to get clean content
+                if source_name.lower() in content.lower():
+                    parts = content.split(' ', 2)  # Split into filename, stem, and content
+                    if len(parts) >= 3:
+                        clean_content = parts[2]
+                    else:
+                        clean_content = content
+                else:
+                    clean_content = content
+                
+                context_parts.append(clean_content)
+                sources.append({
+                    "source": source_name,
+                    "content": clean_content[:200] + "..." if len(clean_content) > 200 else clean_content
+                })
+            
+            # Combine context
+            context = "\n\n".join(context_parts)
+            
+            # Generate answer using LLM with context
+            prompt = self.prompt_template.format(context=context, question=question)
+            answer = self.llm.invoke(prompt)
             
             return {
-                "answer": result.get("result", "No answer generated"),
+                "answer": answer,
                 "sources": sources
             }
             
