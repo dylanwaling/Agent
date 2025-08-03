@@ -30,7 +30,7 @@ class DocumentPipeline:
     def __init__(self, 
                  docs_dir: str = "data/documents",
                  index_dir: str = "data/index",
-                 model_name: str = "tinyllama:latest"):
+                 model_name: str = "llama3:latest"):
         
         self.docs_dir = Path(docs_dir)
         self.index_dir = Path(index_dir)
@@ -61,17 +61,19 @@ class DocumentPipeline:
             model_name="sentence-transformers/all-MiniLM-L6-v2"
         )
           # LLM
-        self.llm = OllamaLLM(model=self.model_name)        # Custom prompt template optimized for TinyLlama
+        self.llm = OllamaLLM(model=self.model_name)        # Custom prompt template optimized for Llama3
         self.prompt_template = PromptTemplate(
             input_variables=["context", "question"],
-            template="""Answer the question using the document content below.
+            template="""You are a helpful assistant that answers questions based on the provided document content.
 
-Documents:
+Use the following document excerpts to answer the question. Be direct and informative.
+
+Document Content:
 {context}
 
 Question: {question}
 
-Answer:"""
+Answer based on the documents above:"""
         )
         
         # Vector store
@@ -155,6 +157,11 @@ Answer:"""
                         logger.warning(f"No text extracted from {doc_file.name}")
                         continue
                     
+                    # Check text quality (temporarily disabled for debugging)
+                    # if not self._is_quality_text(text):
+                    #     logger.warning(f"Low quality text detected in {doc_file.name}, skipping")
+                    #     continue
+                    
                     # Create document chunks
                     chunks = self.text_splitter.split_text(text)
                     
@@ -187,17 +194,24 @@ Answer:"""
             index_path = str(self.index_dir / "faiss_index")
             self.vectorstore.save_local(index_path)
             logger.info(f"Saved index to {index_path}")
-              # Create QA chain with smart relevance-based retrieval
+              # Create QA chain with smart retrieval (fallback approach)
+            try:
+                # Try score threshold first
+                retriever = self.vectorstore.as_retriever(
+                    search_type="similarity_score_threshold",
+                    search_kwargs={
+                        "score_threshold": 0.05,  # Very inclusive threshold
+                        "k": 10
+                    }
+                )
+            except:
+                # Fallback to regular similarity search
+                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 5})
+            
             self.qa_chain = RetrievalQA.from_chain_type(
                 llm=self.llm,
                 chain_type="stuff",
-                retriever=self.vectorstore.as_retriever(
-                    search_type="similarity_score_threshold",
-                    search_kwargs={
-                        "score_threshold": 0.1,  # More inclusive threshold
-                        "k": 100  # Search through many candidates
-                    }
-                ),
+                retriever=retriever,
                 return_source_documents=True,
                 chain_type_kwargs={"prompt": self.prompt_template}
             )
@@ -222,17 +236,24 @@ Answer:"""
                 self.embeddings,
                 allow_dangerous_deserialization=True
             )
-              # Create QA chain with smart relevance-based retrieval
+              # Create QA chain with smart retrieval (fallback approach)
+            try:
+                # Try score threshold first
+                retriever = self.vectorstore.as_retriever(
+                    search_type="similarity_score_threshold",
+                    search_kwargs={
+                        "score_threshold": 0.05,  # Very inclusive threshold
+                        "k": 10
+                    }
+                )
+            except:
+                # Fallback to regular similarity search
+                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 5})
+            
             self.qa_chain = RetrievalQA.from_chain_type(
                 llm=self.llm,
                 chain_type="stuff",
-                retriever=self.vectorstore.as_retriever(
-                    search_type="similarity_score_threshold",
-                    search_kwargs={
-                        "score_threshold": 0.1,  # More inclusive threshold
-                        "k": 100  # Search through many candidates
-                    }
-                ),
+                retriever=retriever,
                 return_source_documents=True,
                 chain_type_kwargs={"prompt": self.prompt_template}
             )
@@ -301,3 +322,29 @@ Answer:"""
                 "answer": f"Error processing question: {e}",
                 "sources": []
             }
+    
+    def _is_quality_text(self, text: str) -> bool:
+        """Check if text is high quality and not corrupted"""
+        if len(text.strip()) < 10:  # More lenient minimum length
+            return False
+            
+        # Check alphabetic ratio (more lenient for math content)
+        alpha_chars = sum(c.isalpha() for c in text)
+        alpha_ratio = alpha_chars / len(text) if text else 0
+        if alpha_ratio < 0.2:  # More lenient - 20% alphabetic (was 40%)
+            return False
+        
+        # Check for repetitive patterns (but be more lenient)
+        words = text.split()
+        if len(words) > 20:  # Only check if enough words
+            unique_words = len(set(words))
+            if unique_words / len(words) < 0.2:  # More lenient - 20% unique words
+                return False
+        
+        # More lenient special character check (math has lots of symbols)
+        special_chars = sum(not c.isalnum() and not c.isspace() for c in text)
+        special_ratio = special_chars / len(text) if text else 0
+        if special_ratio > 0.5:  # More lenient - 50% special chars allowed
+            return False
+            
+        return True
