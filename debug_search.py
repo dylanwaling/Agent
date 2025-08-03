@@ -28,10 +28,11 @@ def test_search():
     
     # Test queries that are failing
     test_queries = [
-        "product manual",  # Should find product_manual.md as #1
-        "invoice outline", # Should find Invoice_Outline_-_Sheet1_1.pdf as #1  
-        "company handbook", # Should find company_handbook.md as #1
-        "algebra operations", # Should find the math PDF as #1
+        "Invoice_Outline_-_Sheet1_1.pdf",
+        "invoice outline",
+        "product_manual",
+        "product manual",
+        "company handbook"
     ]
     
     for query in test_queries:
@@ -52,21 +53,37 @@ def test_search():
             print(f"  {result['rank']}. {result['source']} (score: {result['score']:.3f})")
             print(f"     Content: {result['content_preview']}")
             
-        # Show if the expected document is in results
-        expected_docs = {
-            "product manual": "product_manual.md",
-            "invoice outline": "Invoice_Outline_-_Sheet1_1.pdf", 
-            "company handbook": "company_handbook.md",
-            "algebra operations": "tmphp713yna_Math_Review_-_Algebra_Operations.pdf"
-        }
-        
-        if query.lower() in expected_docs:
-            expected = expected_docs[query.lower()]
-            found_ranks = [i+1 for i, r in enumerate(debug_results["results"]) if r["source"] == expected]
-            if found_ranks:
-                print(f"  ✅ Expected doc '{expected}' found at rank {found_ranks[0]}")
+        # For Invoice PDF, show full content extraction
+        if "invoice" in query.lower() and debug_results['total_results'] > 0:
+            print(f"\n🔍 Full content extraction test for Invoice PDF:")
+            search_results = pipeline.search(query)
+            if search_results:
+                content = search_results[0]["content"]
+                print(f"   Raw content: {content[:200]}...")
+                
+                # Test content cleaning
+                parts = content.split(' ', 2)
+                if len(parts) >= 3:
+                    clean_content = parts[2]
+                    print(f"   Clean content: {clean_content[:200]}...")
+                else:
+                    print(f"   Content split failed, parts: {len(parts)}")
+                    for i, part in enumerate(parts):
+                        print(f"     Part {i}: {part[:50]}...")
+                        
+            expected_doc = query.replace(" ", "_").replace("-", "_") + (".pdf" if "pdf" not in query else "")
+            found_doc = debug_results["results"][0]["source"] if debug_results["results"] else "None"
+            if expected_doc.lower() in found_doc.lower():
+                print(f"  ✅ Expected doc '{found_doc}' found at rank 1")
             else:
-                print(f"  ❌ Expected doc '{expected}' NOT FOUND in top 10!")
+                print(f"  ⚠️ Expected doc containing '{expected_doc}' but got '{found_doc}'")
+        else:
+            expected_doc = query.replace(" ", "_").replace("-", "_") + (".pdf" if "pdf" not in query else "")
+            found_doc = debug_results["results"][0]["source"] if debug_results["results"] else "None"
+            if expected_doc.lower() in found_doc.lower():
+                print(f"  ✅ Expected doc '{found_doc}' found at rank 1")
+            else:
+                print(f"  ⚠️ Expected doc containing '{expected_doc}' but got '{found_doc}'")
 
 if __name__ == "__main__":
     test_search()

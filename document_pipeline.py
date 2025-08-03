@@ -73,7 +73,7 @@ Document Content:
 
 Question: {question}
 
-Answer based on the documents above:"""
+Answer based on the documents above. If the question asks about a specific document or file, clearly identify which document contains the relevant information:"""
         )
         
         # Vector store
@@ -354,16 +354,17 @@ Answer based on the documents above:"""
                 source_name = result["source"]
                 
                 # Remove filename prefix to get clean content
-                if source_name.lower() in content.lower():
-                    parts = content.split(' ', 2)  # Split into filename, stem, and content
-                    if len(parts) >= 3:
-                        clean_content = parts[2]
-                    else:
-                        clean_content = content
+                # The content format is: "filename.ext filename_stem actual_content"
+                parts = content.split(' ', 2)  # Split into filename, stem, and content
+                if len(parts) >= 3:
+                    clean_content = parts[2]  # Get the actual content part
                 else:
-                    clean_content = content
+                    clean_content = content  # Fallback to full content
                 
-                context_parts.append(clean_content)
+                # Add source context to make it clear which document this content comes from
+                contextual_content = f"From document '{source_name}':\n{clean_content}"
+                
+                context_parts.append(contextual_content)
                 sources.append({
                     "source": source_name,
                     "content": clean_content[:200] + "..." if len(clean_content) > 200 else clean_content
