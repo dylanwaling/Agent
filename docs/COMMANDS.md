@@ -245,7 +245,16 @@ rmdir /s "data\index"
 - **Use Llama3** for better answer quality in production
 - **Check system_check.py first** if anything isn't working
 - **Web interface is more reliable** than Streamlit for this use case
+- **Smart retrieval** returns only relevant documents (1 to 500+, based on relevance)
 - **Documents are processed once** - index is reused until rebuilt
+- **Relevance threshold** filters out unrelated content automatically
+
+## 🧠 Smart Retrieval Features
+
+- **No arbitrary limits** - returns 1 document or 500+ based on relevance
+- **Score-based filtering** - only shows documents above relevance threshold
+- **Automatic quality control** - irrelevant documents are filtered out
+- **Scalable** - works with small and large document collections
 
 ---
 

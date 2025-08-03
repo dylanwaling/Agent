@@ -187,11 +187,17 @@ Answer:"""
             index_path = str(self.index_dir / "faiss_index")
             self.vectorstore.save_local(index_path)
             logger.info(f"Saved index to {index_path}")
-              # Create QA chain with custom prompt
+              # Create QA chain with smart relevance-based retrieval
             self.qa_chain = RetrievalQA.from_chain_type(
                 llm=self.llm,
                 chain_type="stuff",
-                retriever=self.vectorstore.as_retriever(search_kwargs={"k": 3}),
+                retriever=self.vectorstore.as_retriever(
+                    search_type="similarity_score_threshold",
+                    search_kwargs={
+                        "score_threshold": 0.1,  # More inclusive threshold
+                        "k": 100  # Search through many candidates
+                    }
+                ),
                 return_source_documents=True,
                 chain_type_kwargs={"prompt": self.prompt_template}
             )
@@ -216,11 +222,17 @@ Answer:"""
                 self.embeddings,
                 allow_dangerous_deserialization=True
             )
-              # Create QA chain with custom prompt
+              # Create QA chain with smart relevance-based retrieval
             self.qa_chain = RetrievalQA.from_chain_type(
                 llm=self.llm,
                 chain_type="stuff",
-                retriever=self.vectorstore.as_retriever(search_kwargs={"k": 3}),
+                retriever=self.vectorstore.as_retriever(
+                    search_type="similarity_score_threshold",
+                    search_kwargs={
+                        "score_threshold": 0.1,  # More inclusive threshold
+                        "k": 100  # Search through many candidates
+                    }
+                ),
                 return_source_documents=True,
                 chain_type_kwargs={"prompt": self.prompt_template}
             )
@@ -232,20 +244,25 @@ Answer:"""
             logger.error(f"Error loading index: {e}")
             return False
     
-    def search(self, query: str, k: int = 3) -> List[Dict[str, Any]]:
-        """Search documents"""
+    def search(self, query: str, score_threshold: float = 0.1) -> List[Dict[str, Any]]:
+        """Search documents with relevance-based filtering"""
         if not self.vectorstore:
             return []
             
         try:
-            docs = self.vectorstore.similarity_search(query, k=k)
-            results = []
+            # Use similarity search with score threshold for smart retrieval
+            docs_with_scores = self.vectorstore.similarity_search_with_score(query, k=100)
             
-            for doc in docs:
+            # Filter by relevance score
+            relevant_docs = [(doc, score) for doc, score in docs_with_scores if score >= score_threshold]
+            
+            results = []
+            for doc, score in relevant_docs:
                 results.append({
                     "content": doc.page_content,
                     "source": doc.metadata.get("source", "Unknown"),
-                    "chunk_id": doc.metadata.get("chunk_id", 0)
+                    "chunk_id": doc.metadata.get("chunk_id", 0),
+                    "relevance_score": score
                 })
                 
             return results
