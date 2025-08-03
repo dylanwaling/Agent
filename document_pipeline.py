@@ -167,12 +167,17 @@ Answer based on the documents above:"""
                     
                     for i, chunk in enumerate(chunks):
                         if chunk.strip():  # Only add non-empty chunks
+                            # Create searchable metadata
+                            searchable_content = f"{doc_file.name} {doc_file.stem} {chunk}"
+                            
                             doc = Document(
-                                page_content=chunk,
+                                page_content=searchable_content,  # Include filename in content for better matching
                                 metadata={
                                     "source": doc_file.name,
+                                    "filename": doc_file.stem,  # Filename without extension
                                     "chunk_id": i,
-                                    "total_chunks": len(chunks)
+                                    "total_chunks": len(chunks),
+                                    "original_content": chunk  # Keep original for display
                                 }
                             )
                             documents.append(doc)
@@ -194,19 +199,18 @@ Answer based on the documents above:"""
             index_path = str(self.index_dir / "faiss_index")
             self.vectorstore.save_local(index_path)
             logger.info(f"Saved index to {index_path}")
-              # Create QA chain with smart retrieval (fallback approach)
+              # Create QA chain with improved retrieval
             try:
-                # Try score threshold first
+                # Use similarity search with better filtering to reduce cross-contamination
                 retriever = self.vectorstore.as_retriever(
-                    search_type="similarity_score_threshold",
                     search_kwargs={
-                        "score_threshold": 0.05,  # Very inclusive threshold
-                        "k": 10
+                        "k": 6,  # Fewer candidates to reduce noise
+                        "fetch_k": 15  # Search through fewer options for more focused results
                     }
                 )
             except:
-                # Fallback to regular similarity search
-                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 5})
+                # Fallback to basic similarity search
+                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 4})
             
             self.qa_chain = RetrievalQA.from_chain_type(
                 llm=self.llm,
@@ -236,19 +240,18 @@ Answer based on the documents above:"""
                 self.embeddings,
                 allow_dangerous_deserialization=True
             )
-              # Create QA chain with smart retrieval (fallback approach)
+              # Create QA chain with improved retrieval
             try:
-                # Try score threshold first
+                # Use similarity search with better filtering to reduce cross-contamination
                 retriever = self.vectorstore.as_retriever(
-                    search_type="similarity_score_threshold",
                     search_kwargs={
-                        "score_threshold": 0.05,  # Very inclusive threshold
-                        "k": 10
+                        "k": 6,  # Fewer candidates to reduce noise
+                        "fetch_k": 15  # Search through fewer options for more focused results
                     }
                 )
             except:
-                # Fallback to regular similarity search
-                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 5})
+                # Fallback to basic similarity search
+                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 4})
             
             self.qa_chain = RetrievalQA.from_chain_type(
                 llm=self.llm,
@@ -265,7 +268,7 @@ Answer based on the documents above:"""
             logger.error(f"Error loading index: {e}")
             return False
     
-    def search(self, query: str, score_threshold: float = 0.1) -> List[Dict[str, Any]]:
+    def search(self, query: str, score_threshold: float = 1.25) -> List[Dict[str, Any]]:
         """Search documents with relevance-based filtering"""
         if not self.vectorstore:
             return []
@@ -274,8 +277,49 @@ Answer based on the documents above:"""
             # Use similarity search with score threshold for smart retrieval
             docs_with_scores = self.vectorstore.similarity_search_with_score(query, k=100)
             
-            # Filter by relevance score
-            relevant_docs = [(doc, score) for doc, score in docs_with_scores if score >= score_threshold]
+            # Smart filtering with filename priority
+            relevant_docs = []
+            query_lower = query.lower()
+            
+            for doc, score in docs_with_scores:
+                source = doc.metadata.get("source", "").lower()
+                filename = doc.metadata.get("filename", "").lower()
+                
+                # Check for exact filename matches with various transformations
+                query_normalized = query_lower.replace(" ", "_").replace("-", "_")
+                source_normalized = source.replace(" ", "_").replace("-", "_")
+                filename_normalized = filename.replace(" ", "_").replace("-", "_")
+                
+                # Strong filename match (exact or very close)
+                strong_filename_match = (
+                    query_normalized in source_normalized or 
+                    query_normalized in filename_normalized or
+                    source_normalized.replace("_", "").replace(".", "") in query_normalized.replace("_", "").replace(".", "") or
+                    filename_normalized in query_normalized or
+                    query_lower.replace(" ", "") in source.replace("_", "").replace("-", "").replace(".", "")
+                )
+                
+                # Weaker filename match (partial)
+                weak_filename_match = (
+                    any(word in source for word in query_lower.split() if len(word) > 2) or
+                    any(word in filename for word in query_lower.split() if len(word) > 2)
+                )
+                
+                # Apply different thresholds based on match strength
+                if strong_filename_match:
+                    # Very lenient for strong filename matches
+                    if score <= 2.5:
+                        relevant_docs.append((doc, score * 0.5))  # Boost score by halving it
+                elif weak_filename_match:
+                    # Moderate threshold for weak filename matches  
+                    if score <= 2.0:
+                        relevant_docs.append((doc, score * 0.8))  # Small boost
+                elif score <= score_threshold:
+                    # Strict threshold for content-only matches
+                    relevant_docs.append((doc, score))
+            
+            # Sort by score (lower is better in FAISS)
+            relevant_docs.sort(key=lambda x: x[1])
             
             results = []
             for doc, score in relevant_docs:
@@ -306,9 +350,11 @@ Answer based on the documents above:"""
             sources = []
             if "source_documents" in result:
                 for doc in result["source_documents"]:
+                    # Use original content if available, otherwise use page_content
+                    content = doc.metadata.get("original_content", doc.page_content)
                     sources.append({
                         "source": doc.metadata.get("source", "Unknown"),
-                        "content": doc.page_content[:200] + "..." if len(doc.page_content) > 200 else doc.page_content
+                        "content": content[:200] + "..." if len(content) > 200 else content
                     })
             
             return {
@@ -322,6 +368,35 @@ Answer based on the documents above:"""
                 "answer": f"Error processing question: {e}",
                 "sources": []
             }
+    
+    def debug_search(self, query: str) -> Dict[str, Any]:
+        """Debug search to see what's being retrieved using our enhanced search logic"""
+        if not self.vectorstore:
+            return {"error": "No vectorstore available"}
+        
+        try:
+            # Use our enhanced search method instead of raw FAISS
+            search_results = self.search(query)
+            
+            results = {
+                "query": query,
+                "total_results": len(search_results),
+                "results": []
+            }
+            
+            for i, result in enumerate(search_results[:10]):  # Show top 10
+                results["results"].append({
+                    "rank": i + 1,
+                    "score": result["relevance_score"],
+                    "source": result["source"],
+                    "chunk_id": result["chunk_id"],
+                    "content_preview": result["content"][:100] + "..."
+                })
+            
+            return results
+            
+        except Exception as e:
+            return {"error": str(e)}
     
     def _is_quality_text(self, text: str) -> bool:
         """Check if text is high quality and not corrupted"""
