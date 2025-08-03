@@ -15,9 +15,9 @@ import time
 import sys
 sys.path.append(str(Path(__file__).parent))
 
-# Import DocumentPipeline directly from 5-chat.py
+# Import DocumentPipeline directly from document_pipeline.py
 import importlib.util
-spec = importlib.util.spec_from_file_location("chat_module", "5-chat.py")
+spec = importlib.util.spec_from_file_location("pipeline_module", "document_pipeline.py")
 chat_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(chat_module)
 DocumentPipeline = chat_module.DocumentPipeline
