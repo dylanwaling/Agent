@@ -12,7 +12,7 @@ from werkzeug.utils import secure_filename
 import time
 
 # Import our pipeline
-from document_pipeline import DocumentPipeline
+from backend_logic import DocumentPipeline
 
 # Setup
 logging.basicConfig(level=logging.INFO)

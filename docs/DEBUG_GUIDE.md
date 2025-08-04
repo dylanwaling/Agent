@@ -1,98 +1,138 @@
-# 🔧 Debug and Testing Utilities
+# 🔧 Debug and Testing Guide
 
-This directory contains comprehensive debug and testing utilities for each step of the Docling + Ollama pipeline.
+Comprehensive debugging and testing utilities for the Enhanced Document Q&A Pipeline.
 
-## 📁 Debug Files Overview
+## 📁 Current Debug Tools
 
-### `debug_utils.py` - Combined Database & Search Utilities
-- **Purpose**: Combined functionality from old `check_data.py` and `test_search.py`
-- **Functions**: Database status, search testing, embedding visualization, file structure check
-- **Usage**: `python debug_utils.py`
-
-### `debug-1-extraction.py` - Document Extraction Testing
-- **Purpose**: Debug and test document extraction (PDFs, HTML, sitemaps)
+### `backend_debug.py` - Comprehensive Testing Suite
+- **Purpose**: Complete system validation and performance testing
 - **Features**:
-  - Internet connectivity check
-  - Docling installation verification
-  - PDF extraction testing (ArXiv paper)
-  - HTML extraction testing (GitHub page)
-  - Sitemap functionality testing
-  - AI model cache analysis
-  - Performance timing
-- **Usage**: `python debug-1-extraction.py`
-
-### `debug-2-chunking.py` - Document Chunking Testing
-- **Purpose**: Debug and test document chunking process
-- **Features**:
-  - Tokenizer wrapper testing
-  - Document extraction for chunking
-  - HybridChunker creation and configuration
-  - Chunk analysis (length, metadata, quality)
-  - Performance timing
-  - Content coherence checking
-- **Usage**: `python debug-2-chunking.py`
-
-### `debug-3-embedding.py` - Embeddings & Database Testing
-- **Purpose**: Debug and test embedding generation and LanceDB storage
-- **Features**:
-  - SentenceTransformer model testing
-  - LanceDB connection and operations
-  - Document processing pipeline
-  - Metadata extraction verification
-  - Embedding generation performance
-  - Database insertion testing
-  - Memory usage analysis
-- **Usage**: `python debug-3-embedding.py`
-
-### `debug-4-search.py` - Search Functionality Testing
-- **Purpose**: Debug and test search and retrieval functionality
-- **Features**:
-  - Database connection verification
-  - Embedding model consistency
-  - Database content analysis
-  - Search accuracy testing
+  - System component testing (imports, Docling, Ollama, embeddings)
+  - Database content inspection (FAISS index validation)
+  - Pipeline initialization and document processing tests
+  - Enhanced search functionality validation
+  - Q&A functionality testing with real queries
+  - Edge case testing (empty queries, non-existent docs, emojis)
   - Performance benchmarking
-  - Result quality assessment
-  - Multiple query testing
-- **Usage**: `python debug-4-search.py`
+- **Usage**: `python backend_debug.py`
+- **Expected Results**: All tests should pass, ~6ms search time
 
-### `debug-5-chat.py` - Chat Interface Testing
-- **Purpose**: Debug and test chat functionality with Ollama
-- **Features**:
-  - Ollama service connection testing
-  - Model availability checking
-  - Chat API functionality
-  - Context retrieval testing
-  - Response generation testing
-  - Streaming response testing
-  - Error handling verification
-  - Full chat simulation
-- **Usage**: `python debug-5-chat.py`
+### `backend_logic.py` - Core Pipeline with Debug Methods
+- **Purpose**: Main DocumentPipeline class with built-in debugging
+- **Debug Methods**:
+  - `debug_search(query)` - Returns detailed search results with scores
+  - `search(query, score_threshold)` - Enhanced search with configurable thresholds
+  - `ask(question)` - Q&A with source attribution
+- **Usage**: Import and use directly for custom debugging
 
-## 🚀 Quick Testing Commands
+## 🧪 Testing Workflow
 
-### Test Individual Steps:
+### 1. System Health Check
 ```bash
-# Test extraction
-python debug-1-extraction.py
-
-# Test chunking  
-python debug-2-chunking.py
-
-# Test embeddings
-python debug-3-embedding.py
-
-# Test search
-python debug-4-search.py
-
-# Test chat
-python debug-5-chat.py
+python backend_debug.py
 ```
 
-### Test Database & Search:
-```bash
-# Combined database and search utilities
-python debug_utils.py
+**What to look for:**
+- ✅ All 7 system components pass
+- ✅ FAISS index exists and loads
+- ✅ Documents directory has files
+- ✅ Ollama responds with llama3:latest
+
+### 2. Search Functionality Validation
+The debug script tests these queries:
+- `"Invoice_Outline_-_Sheet1_1.pdf"` → Should find Invoice PDF as #1
+- `"product manual"` → Should find product_manual.md as #1
+- `"company handbook"` → Should find company_handbook.md as #1
+- `"algebra operations"` → Should find Math PDF as #1
+
+### 3. Performance Benchmarks
+Expected metrics:
+## 🚀 Quick Debugging Commands
+
+### Manual Testing Examples
+```python
+from backend_logic import DocumentPipeline
+
+# Initialize and test
+pipeline = DocumentPipeline()
+pipeline.load_index()
+
+# Test search with debug info
+debug_info = pipeline.debug_search("invoice outline")
+print(f"Query: {debug_info['query']}")
+print(f"Results: {debug_info['total_results']}")
+for r in debug_info["results"][:3]:
+    print(f"{r['rank']}. {r['source']} (score: {r['score']:.3f})")
+
+# Test Q&A
+result = pipeline.ask("What is in the invoice document?")
+print(f"Answer: {result['answer'][:100]}...")
+print(f"Sources: {[s['source'] for s in result['sources']]}")
+```
+
+### Performance Testing
+```python
+import time
+from backend_logic import DocumentPipeline
+
+pipeline = DocumentPipeline()
+pipeline.load_index()
+
+# Test search speed
+queries = ["invoice", "manual", "handbook", "math"]
+times = []
+
+for query in queries:
+    start = time.time()
+    results = pipeline.search(query)
+    end = time.time()
+    times.append(end - start)
+    print(f"{query}: {len(results)} results in {(end-start)*1000:.1f}ms")
+
+print(f"Average: {sum(times)/len(times)*1000:.1f}ms")
+```
+
+## � Troubleshooting Common Issues
+
+### Issue: No search results
+```python
+# Check if index exists
+from pathlib import Path
+index_path = Path("data/index/faiss_index.faiss")
+print(f"Index exists: {index_path.exists()}")
+
+# Check document count
+pipeline = DocumentPipeline()
+if pipeline.load_index():
+    test_results = pipeline.search("test", score_threshold=10.0)  # Very lenient
+    print(f"Total indexed chunks: {len(test_results)}")
+```
+
+### Issue: Ollama connection problems
+```python
+from langchain_ollama import OllamaLLM
+
+try:
+    llm = OllamaLLM(model="llama3:latest")
+    response = llm.invoke("Hello")
+    print(f"Ollama working: {response[:50]}...")
+except Exception as e:
+    print(f"Ollama error: {e}")
+    print("Run: ollama serve")
+```
+
+### Issue: Poor search results
+```python
+# Check score thresholds
+pipeline = DocumentPipeline()
+pipeline.load_index()
+
+query = "your query here"
+results = pipeline.search(query, score_threshold=5.0)  # Very lenient
+
+print(f"Found {len(results)} results:")
+for i, r in enumerate(results[:5]):
+    print(f"{i+1}. {r['source']} (score: {r['relevance_score']:.3f})")
 ```
 
 ### Run Full Pipeline Test:

@@ -1,6 +1,6 @@
-# Setup Guide for Docling + Ollama + Llama 3 Pipeline
+# Setup Guide for Enhanced Document Q&A Pipeline
 
-This guide will help you set up and run the knowledge extraction pipeline using Docling, Ollama, and Llama 3.
+This guide will help you set up and run the enhanced document processing pipeline using Docling, FAISS, HuggingFace embeddings, and Ollama.
 
 ## Prerequisites
 
@@ -26,7 +26,7 @@ ollama serve
 
 In a new terminal/command prompt:
 ```bash
-ollama pull llama3
+ollama pull llama3:latest
 ```
 
 This will download the Llama 3 model (about 4.7GB).
@@ -38,66 +38,89 @@ Check that everything is working:
 ollama list
 ```
 
-You should see `llama3` in the list of models.
+You should see `llama3:latest` in the list of models.
 
 ## Python Environment Setup
 
 ### 1. Install Dependencies
 
-The Python packages have been installed, but if you need to reinstall:
-
 ```bash
 pip install -r docs/requirements.txt
 ```
 
-## Running the Pipeline
-
-Execute the scripts in the following order:
-
-### 1. Document Extraction
-```bash
-python 1-extraction.py
+The requirements include:
+- **docling** - Document processing and extraction
+- **langchain** - Text processing and chunking  
+- **langchain-huggingface** - HuggingFace embeddings integration
+- **langchain-ollama** - Ollama LLM integration
+- **faiss-cpu** - Fast similarity search and clustering
+- **flask** - Web application framework
 ```
-This script extracts content from documents (PDFs, HTML pages) using Docling.
 
-**⏰ First Run Timing**: This can take 5-15 minutes on first run as it downloads AI models:
-- Layout analysis models (~500MB)
-- Table recognition models
-- Document structure analysis
+## Running the Application
 
-**What's happening**:
-- Downloading RT-DETR layout analysis model
-- Downloading TableFormer table recognition model
-- Processing ArXiv PDF with AI analysis
-- Extracting content from multiple HTML pages
-
-### 2. Document Chunking
+### Option 1: Web Application (Recommended)
 ```bash
-python 2-chunking.py
+python app.py
 ```
-This script creates intelligent chunks from the extracted documents.
 
-### 3. Create Embeddings Database
+**What this does:**
+- Starts Flask web server on http://127.0.0.1:5000
+- Automatically loads existing index or processes documents
+- Provides clean web interface for document Q&A
+- Uses enhanced search for perfect document targeting
+
+**⏰ First Run:** May take a few minutes to download models:
+- HuggingFace sentence-transformers model (~90MB)
+- Docling AI models for document processing (~500MB)
+
+### Option 2: Comprehensive Testing
 ```bash
-python 3-embedding.py
+python backend_debug.py
 ```
-This script creates embeddings using sentence-transformers and stores them in LanceDB.
 
-### 4. Test Search Functionality
+**What this does:**
+- Tests all system components (imports, Docling, Ollama, embeddings)
+- Validates document processing pipeline
+- Benchmarks search performance (should show ~6ms average)
+- Tests Q&A functionality with real queries
+- Validates enhanced search accuracy
+
+## First Time Setup
+
+### 1. Add Your Documents
+Place documents in the `data/documents/` folder:
 ```bash
-python 4-search.py
+# Supported formats
+data/documents/
+├── your_document.pdf
+├── notes.md
+├── manual.docx
+└── text_file.txt
 ```
-This script tests the search functionality to ensure everything is working.
 
-### 5. Launch Chat Interface
-```bash
-streamlit run 5-chat.py
+### 2. Process Documents
+Either use the web interface or run:
+```python
+from backend_logic import DocumentPipeline
+
+pipeline = DocumentPipeline()
+pipeline.process_documents()  # Creates FAISS index
 ```
-This launches the interactive chat interface where you can ask questions about the documents.
 
-## Using the Chat Interface
+### 3. Start Asking Questions
+```python
+result = pipeline.ask("What is in the invoice document?")
+print(result["answer"])
+print("Sources:", [s["source"] for s in result["sources"]])
+```
+python app.py
+```
+This launches the interactive web interface where you can ask questions about the documents.
 
-1. After running `streamlit run 5-chat.py`, open your browser to `http://localhost:8501`
+## Using the Web Interface
+
+1. After running `python app.py`, open your browser to `http://localhost:5000`
 2. Type your questions about the document content
 3. The system will:
    - Search for relevant document chunks

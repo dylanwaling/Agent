@@ -1,43 +1,57 @@
 # Available Commands Reference
 
-Quick reference for all commands available in this Document Q&A Pipeline.
+Quick reference for all commands available in this Enhanced Document Q&A Pipeline.
 
 ## 🚀 Main Applications
 
 ### Start Web Interface
 ```bash
-python web_app.py
+python app.py
 ```
 - Launches Flask web interface on http://127.0.0.1:5000
 - Upload documents, process them, and ask questions
-- Lightweight alternative to Streamlit
+- Enhanced search with perfect document targeting
 
-### System Check & Debugging
+### Comprehensive Testing & Debugging
 ```bash
-python system_check.py
+python backend_debug.py
 ```
-- Comprehensive system health check
-- Tests Docling, embeddings, Ollama, and database
-- Troubleshoots common issues
+- Complete system health check and validation
+- Tests all components: Docling, embeddings, Ollama, FAISS
+- Performance benchmarking and accuracy validation
+- Search functionality testing with real queries
 
 ## 🔧 Pipeline Operations
 
 ### Direct Pipeline Usage
 ```python
-from document_pipeline import DocumentPipeline
+from backend_logic import DocumentPipeline
 
 # Initialize pipeline
 pipeline = DocumentPipeline()
 
-# Add documents
-pipeline.add_document("path/to/document.pdf")
+# Load existing index or process documents
+if not pipeline.load_index():
+    pipeline.process_documents()
 
-# Process all documents
-pipeline.process_documents()
+# Enhanced search with smart filtering
+results = pipeline.search("invoice outline")
 
-# Ask questions
-result = pipeline.ask("What is this document about?")
+# Ask questions with enhanced retrieval
+result = pipeline.ask("What is in the invoice document?")
 print(result["answer"])
+print("Sources:", [s["source"] for s in result["sources"]])
+```
+
+### Advanced Usage
+```python
+# Custom score threshold
+results = pipeline.search("company handbook", score_threshold=1.5)
+
+# Debug search to see ranking
+debug_info = pipeline.debug_search("product manual")
+for r in debug_info["results"]:
+    print(f"{r['rank']}. {r['source']} (score: {r['score']})")
 ```
 
 ## 🤖 Ollama Commands
@@ -55,11 +69,14 @@ ollama serve
 
 ### Model Management
 ```bash
-# Pull TinyLlama (recommended - fast & lightweight)
-ollama pull tinyllama
+# Pull Llama3 (recommended for quality)
+ollama pull llama3:latest
 
-# Pull Llama3 (better quality, slower)
-ollama pull llama3
+# Pull TinyLlama (faster, lower quality)
+ollama pull tinyllama:latest
+
+# Check running models
+ollama ps
 
 # Remove a model
 ollama rm model_name
@@ -67,28 +84,62 @@ ollama rm model_name
 
 ### Test Ollama
 ```bash
-ollama run tinyllama "Hello, respond with just 'Hi there!'"
+ollama run llama3:latest "Hello, respond with just 'Hi there!'"
 ```
 
-## 📦 Package Management
+## � Testing & Validation
 
-### Install Dependencies
+### Full System Test
 ```bash
-pip install -r docs/requirements.txt
+python backend_debug.py
 ```
+- Tests all system components
+- Validates document processing
+- Benchmarks search performance
+- Checks Q&A accuracy
 
-### Install Individual Packages
-```bash
-pip install flask docling langchain-ollama faiss-cpu
+### Quick Performance Check
+```python
+from backend_logic import DocumentPipeline
+import time
+
+pipeline = DocumentPipeline()
+pipeline.load_index()
+
+start = time.time()
+results = pipeline.search("company handbook")
+print(f"Search took: {time.time() - start:.3f}s")
+print(f"Found: {len(results)} results")
 ```
 
 ## 🗂️ File Management
 
+### Document Locations
+```bash
+# Add documents here
+data/documents/
+
+# Index storage
+data/index/faiss_index.faiss
+data/index/faiss_index.pkl
+```
+
+### Clear Index (Force Rebuild)
+```bash
+# Delete index files
+rm data/index/faiss_index.faiss
+rm data/index/faiss_index.pkl
+
+# Or in Python
+import shutil
+shutil.rmtree("data/index", ignore_errors=True)
+```
+
 ### Current File Structure
 ```
-document_pipeline.py    # Main processing pipeline
-web_app.py             # Flask web interface  
-system_check.py        # Debug and verification
+backend_logic.py       # Main processing pipeline
+app.py                 # Flask web interface  
+backend_debug.py       # Debug and verification
 data/documents/        # Upload documents here
 data/index/           # Vector search index
 docs/                 # Documentation
@@ -117,18 +168,23 @@ test_database()
 
 ### Database Operations
 ```python
-from document_pipeline import DocumentPipeline
+from backend_logic import DocumentPipeline
 
 pipeline = DocumentPipeline()
 
-# List current documents
-docs = pipeline.list_documents()
-print(docs)
+# Check if index exists and load it
+if pipeline.load_index():
+    print("Index loaded successfully")
+else:
+    print("No index found, processing documents...")
+    pipeline.process_documents()
 
-# Remove a document
-pipeline.remove_document("filename.pdf")
+# Search for documents
+results = pipeline.search("your search query")
+for result in results:
+    print(f"Found: {result['source']}")
 
-# Rebuild index
+# Rebuild index (reprocess all documents)
 pipeline.process_documents()
 ```
 
@@ -151,7 +207,7 @@ pipeline.process_documents()
 
 ```bash
 # 1. Start the system
-python web_app.py
+python app.py
 
 # 2. Open browser to http://127.0.0.1:5000
 
@@ -176,7 +232,7 @@ curl http://localhost:11434/api/tags
 ### If documents won't process:
 ```bash
 # Check system status
-python system_check.py
+python backend_debug.py
 
 # Manually check documents folder
 dir "data\documents"
@@ -188,7 +244,7 @@ dir "data\documents"
 netstat -an | findstr :5000
 
 # Try different port
-python web_app.py --port 5001
+python app.py --port 5001
 ```
 
 ### Clear cache/index:
@@ -226,7 +282,7 @@ python -c "import psutil; print(f'Memory: {psutil.virtual_memory().percent}%')"
 rmdir /s "data"
 
 # Restart and reprocess
-python web_app.py
+python app.py
 ```
 
 ### Soft Reset (Keep Documents)
@@ -243,7 +299,7 @@ rmdir /s "data\index"
 
 - **Use TinyLlama** for faster testing and development
 - **Use Llama3** for better answer quality in production
-- **Check system_check.py first** if anything isn't working
+- **Check backend_debug.py first** if anything isn't working
 - **Web interface is more reliable** than Streamlit for this use case
 - **Smart retrieval** returns only relevant documents (1 to 500+, based on relevance)
 - **Documents are processed once** - index is reused until rebuilt
