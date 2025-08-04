@@ -1,6 +1,10 @@
 pydantic==1.10.14
 lancedb==0.8.21
 sentence-transformers
+# PyTorch GPU support (install separately):
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
+# or for CUDA 12.1:
+# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
 markdown
 python-docx
 openpyxl
@@ -22,5 +26,8 @@ langchain-community
 langchain-core
 langchain-ollama
 langchain-huggingface
-faiss-cpu
+# GPU acceleration (choose one):
+# faiss-cpu          # CPU-only (current)
+faiss-gpu            # GPU acceleration for vector search
+# faiss-gpu==1.7.4   # Specific version if needed
 langsmith

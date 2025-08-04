@@ -44,21 +44,56 @@ class DocumentPipeline:
     def _init_components(self):
         """Initialize processing components"""
         
+        # Check for GPU availability and optimize for hardware
+        try:
+            import torch
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"
+            if self.device == "cuda":
+                gpu_name = torch.cuda.get_device_name(0)
+                gpu_memory_gb = torch.cuda.get_device_properties(0).total_memory / 1e9
+                logger.info(f"🚀 GPU detected: {gpu_name}")
+                logger.info(f"💾 GPU Memory: {gpu_memory_gb:.1f} GB")
+                
+                # Optimize for lower memory GPUs (like GTX 1060 6GB)
+                if gpu_memory_gb < 8:
+                    logger.info("� Optimizing for 6GB GPU...")
+                    # Enable memory efficiency for smaller GPUs
+                    torch.cuda.empty_cache()
+                    self.gpu_optimized = True
+                else:
+                    self.gpu_optimized = False
+            else:
+                logger.info("�💻 Using CPU (no GPU detected)")
+                self.gpu_optimized = False
+        except ImportError:
+            self.device = "cpu"
+            self.gpu_optimized = False
+            logger.info("💻 Using CPU (PyTorch not available)")
+        
         # Document converter (Docling)
         self.converter = DocumentConverter()
         
-        # Text splitter
+        # Text splitter - optimized for GPU memory
+        chunk_size = 800 if hasattr(self, 'gpu_optimized') and self.gpu_optimized else 1000
         self.text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=1000,
-            chunk_overlap=200,
+            chunk_size=chunk_size,
+            chunk_overlap=150 if chunk_size == 800 else 200,
             length_function=len,
         )
         
-        # Embeddings
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/all-MiniLM-L6-v2"
-        )
-          # LLM
+        # Embeddings with GPU support
+        embedding_kwargs = {
+            "model_name": "sentence-transformers/all-MiniLM-L6-v2"
+        }
+        
+        # Add device specification if GPU is available
+        if self.device == "cuda":
+            embedding_kwargs["model_kwargs"] = {"device": self.device}
+            embedding_kwargs["encode_kwargs"] = {"device": self.device}
+        
+        self.embeddings = HuggingFaceEmbeddings(**embedding_kwargs)
+        
+        # LLM
         self.llm = OllamaLLM(model=self.model_name)        # Custom prompt template optimized for Llama3
         self.prompt_template = PromptTemplate(
             input_variables=["context", "question"],
@@ -151,9 +186,37 @@ Answer based on the documents above. If the question asks about a specific docum
                 
             logger.info(f"Created {len(documents)} chunks from {processed_count} documents")
             
-            # Build vector store
+            # Build vector store with GPU support
             try:
                 self.vectorstore = FAISS.from_documents(documents, self.embeddings)
+                
+                # Move to GPU if available (with memory management for 6GB GPUs)
+                if hasattr(self, 'device') and self.device == "cuda":
+                    try:
+                        # Move FAISS index to GPU with memory optimization
+                        import faiss
+                        if hasattr(faiss, 'StandardGpuResources'):
+                            gpu_res = faiss.StandardGpuResources()
+                            
+                            # For 6GB GPUs, use memory-efficient settings
+                            if hasattr(self, 'gpu_optimized') and self.gpu_optimized:
+                                # Limit GPU memory usage for smaller GPUs
+                                gpu_res.setTempMemory(2 * 1024 * 1024 * 1024)  # 2GB temp memory
+                                logger.info("🔧 Using memory-optimized GPU settings for 6GB GPU")
+                            
+                            self.vectorstore.index = faiss.index_cpu_to_gpu(gpu_res, 0, self.vectorstore.index)
+                            logger.info("🚀 Moved FAISS index to GPU")
+                    except Exception as gpu_error:
+                        logger.warning(f"Failed to move FAISS to GPU: {gpu_error}")
+                        logger.info("💻 Continuing with CPU FAISS")
+                        
+                        # Clear GPU memory if failed
+                        if hasattr(self, 'device') and self.device == "cuda":
+                            try:
+                                import torch
+                                torch.cuda.empty_cache()
+                            except:
+                                pass
                 
                 # Save index
                 index_path = str(self.index_dir / "faiss_index")

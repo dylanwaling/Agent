@@ -98,6 +98,28 @@ def test_system_components():
     except Exception as e:
         print(f"❌ Embeddings test failed: {e}")
     
+    # Test GPU availability
+    print(f"\n🚀 Testing GPU support...")
+    try:
+        import torch
+        if torch.cuda.is_available():
+            print(f"✅ CUDA available: {torch.cuda.get_device_name(0)}")
+            print(f"💾 GPU Memory: {torch.cuda.get_device_properties(0).total_memory / 1e9:.1f} GB")
+            print(f"🔥 CUDA Version: {torch.version.cuda}")
+        else:
+            print("💻 CUDA not available - using CPU")
+            
+        # Test FAISS GPU
+        import faiss
+        if hasattr(faiss, 'StandardGpuResources'):
+            print("✅ FAISS GPU support available")
+        else:
+            print("💻 FAISS CPU-only version installed")
+            
+    except ImportError as e:
+        print(f"❌ GPU test failed: {e}")
+        print("💻 Using CPU-only mode")
+    
     return success_count >= len(components) - 1  # Allow one failure
 
 def inspect_database_content():
