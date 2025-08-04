@@ -28,7 +28,7 @@ class DocumentPipeline:
     def __init__(self, 
                  docs_dir: str = "data/documents",
                  index_dir: str = "data/index",
-                 model_name: str = "llama3.2:1b"):
+                 model_name: str = "qwen2.5:1.5b"):
         
         self.docs_dir = Path(docs_dir)
         self.index_dir = Path(index_dir)
@@ -93,23 +93,23 @@ class DocumentPipeline:
         
         self.embeddings = HuggingFaceEmbeddings(**embedding_kwargs)
         
-        # LLM optimized for llama3.2:1b ultra-fast performance
+        # LLM optimized for qwen2.5:1.5b - excellent reasoning performance
         self.llm = OllamaLLM(
             model=self.model_name,
-            temperature=0.1,      # Slight randomness for natural responses
-            num_ctx=2048,        # Good context window for the tiny model
-            num_predict=256,     # Allow adequate response length
-        )        # Explicit prompt template to prevent hallucinations
+            temperature=0.2,      # Slightly higher for more thoughtful responses
+            num_ctx=2048,        # Good context window
+            num_predict=320,     # Allow longer responses for better reasoning
+        )        # Enhanced prompt template for thoughtful responses
         self.prompt_template = PromptTemplate(
             input_variables=["context", "question"],
-            template="""Answer the question using ONLY the provided documents. Do not add any information not found in the documents.
+            template="""Based on the provided documents, give a comprehensive and helpful answer. Explain concepts clearly and provide context when useful.
 
 Documents:
 {context}
 
 Question: {question}
 
-Answer (using only document information):"""
+Answer:"""
         )
         
         # Vector store
