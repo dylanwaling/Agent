@@ -8,7 +8,6 @@ import os
 import logging
 from pathlib import Path
 from typing import List, Dict, Any
-import shutil
 
 # Core imports
 from docling.document_converter import DocumentConverter
@@ -16,7 +15,6 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_ollama import OllamaLLM
-from langchain.chains import RetrievalQA
 from langchain.schema import Document
 from langchain.prompts import PromptTemplate
 
@@ -78,51 +76,7 @@ Answer based on the documents above. If the question asks about a specific docum
         
         # Vector store
         self.vectorstore = None
-        self.qa_chain = None
         
-    def add_document(self, file_path: str) -> bool:
-        """Add a single document to the collection"""
-        try:
-            file_path = Path(file_path)
-            if not file_path.exists():
-                logger.error(f"File not found: {file_path}")
-                return False
-                
-            # Copy to docs directory
-            dest_path = self.docs_dir / file_path.name
-            shutil.copy2(file_path, dest_path)
-            logger.info(f"Added document: {file_path.name}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error adding document {file_path}: {e}")
-            return False
-    
-    def remove_document(self, filename: str) -> bool:
-        """Remove a document from the collection"""
-        try:
-            file_path = self.docs_dir / filename
-            if file_path.exists():
-                file_path.unlink()
-                logger.info(f"Removed document: {filename}")
-                return True
-            else:
-                logger.warning(f"Document not found: {filename}")
-                return False
-                
-        except Exception as e:
-            logger.error(f"Error removing document {filename}: {e}")
-            return False
-    
-    def list_documents(self) -> List[str]:
-        """List all documents in the collection"""
-        try:
-            docs = [f.name for f in self.docs_dir.iterdir() if f.is_file()]
-            return sorted(docs)
-        except Exception as e:
-            logger.error(f"Error listing documents: {e}")
-            return []
-    
     def process_documents(self) -> bool:
         """Process all documents and build index"""
         try:
@@ -156,11 +110,6 @@ Answer based on the documents above. If the question asks about a specific docum
                     if not text.strip():
                         logger.warning(f"No text extracted from {doc_file.name}")
                         continue
-                    
-                    # Check text quality (temporarily disabled for debugging)
-                    # if not self._is_quality_text(text):
-                    #     logger.warning(f"Low quality text detected in {doc_file.name}, skipping")
-                    #     continue
                     
                     # Create document chunks
                     chunks = self.text_splitter.split_text(text)
@@ -199,21 +148,6 @@ Answer based on the documents above. If the question asks about a specific docum
             index_path = str(self.index_dir / "faiss_index")
             self.vectorstore.save_local(index_path)
             logger.info(f"Saved index to {index_path}")
-              # Create QA chain with basic retriever (we'll override in ask() method)
-            try:
-                # Use basic similarity search - we'll use our enhanced search in ask() method
-                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 6})
-            except Exception as e:
-                logger.warning(f"Failed to create retriever: {e}")
-                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 4})
-            
-            self.qa_chain = RetrievalQA.from_chain_type(
-                llm=self.llm,
-                chain_type="stuff",
-                retriever=retriever,
-                return_source_documents=True,
-                chain_type_kwargs={"prompt": self.prompt_template}
-            )
             
             logger.info("Document processing complete!")
             return True
@@ -234,21 +168,6 @@ Answer based on the documents above. If the question asks about a specific docum
                 index_path, 
                 self.embeddings,
                 allow_dangerous_deserialization=True
-            )
-              # Create QA chain with basic retriever (we'll override in ask() method)
-            try:
-                # Use basic similarity search - we'll use our enhanced search in ask() method
-                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 6})
-            except Exception as e:
-                logger.warning(f"Failed to create retriever: {e}")
-                retriever = self.vectorstore.as_retriever(search_kwargs={"k": 4})
-            
-            self.qa_chain = RetrievalQA.from_chain_type(
-                llm=self.llm,
-                chain_type="stuff",
-                retriever=retriever,
-                return_source_documents=True,
-                chain_type_kwargs={"prompt": self.prompt_template}
             )
             
             logger.info("Index loaded successfully")
@@ -417,29 +336,3 @@ Answer based on the documents above. If the question asks about a specific docum
             
         except Exception as e:
             return {"error": str(e)}
-    
-    def _is_quality_text(self, text: str) -> bool:
-        """Check if text is high quality and not corrupted"""
-        if len(text.strip()) < 10:  # More lenient minimum length
-            return False
-            
-        # Check alphabetic ratio (more lenient for math content)
-        alpha_chars = sum(c.isalpha() for c in text)
-        alpha_ratio = alpha_chars / len(text) if text else 0
-        if alpha_ratio < 0.2:  # More lenient - 20% alphabetic (was 40%)
-            return False
-        
-        # Check for repetitive patterns (but be more lenient)
-        words = text.split()
-        if len(words) > 20:  # Only check if enough words
-            unique_words = len(set(words))
-            if unique_words / len(words) < 0.2:  # More lenient - 20% unique words
-                return False
-        
-        # More lenient special character check (math has lots of symbols)
-        special_chars = sum(not c.isalnum() and not c.isspace() for c in text)
-        special_ratio = special_chars / len(text) if text else 0
-        if special_ratio > 0.5:  # More lenient - 50% special chars allowed
-            return False
-            
-        return True

@@ -12,15 +12,7 @@ from werkzeug.utils import secure_filename
 import time
 
 # Import our pipeline
-import sys
-sys.path.append(str(Path(__file__).parent))
-
-# Import DocumentPipeline directly from document_pipeline.py
-import importlib.util
-spec = importlib.util.spec_from_file_location("pipeline_module", "document_pipeline.py")
-chat_module = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(chat_module)
-DocumentPipeline = chat_module.DocumentPipeline
+from document_pipeline import DocumentPipeline
 
 # Setup
 logging.basicConfig(level=logging.INFO)
@@ -30,8 +22,12 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['UPLOAD_FOLDER'] = 'data/documents'
 
-# Global pipeline instance
-pipeline = None
+# Initialize pipeline on startup
+pipeline = DocumentPipeline()
+if pipeline.load_index():
+    logger.info("✅ Loaded existing index")
+else:
+    logger.info("⚠️ No existing index found")
 
 # HTML Template (embedded for simplicity)
 HTML_TEMPLATE = '''
@@ -185,13 +181,8 @@ def upload_file():
 @app.route('/process', methods=['POST'])
 def process_documents():
     """Process all documents"""
-    global pipeline
     try:
         session_data['status'] = {'type': 'loading', 'message': '🔄 Processing documents...'}
-        
-        # Initialize pipeline if needed
-        if not pipeline:
-            pipeline = DocumentPipeline()
         
         # Process documents
         success = pipeline.process_documents()
@@ -210,14 +201,14 @@ def process_documents():
 @app.route('/ask', methods=['POST'])
 def ask_question():
     """Handle Q&A"""
-    global pipeline
     try:
         question = request.form.get('question', '').strip()
         if not question:
             session_data['status'] = {'type': 'error', 'message': 'Please enter a question'}
             return redirect(url_for('index'))
         
-        if not pipeline or not pipeline.qa_chain:
+        # Check if we have a vectorstore (not qa_chain)
+        if not pipeline.vectorstore:
             session_data['status'] = {'type': 'error', 'message': 'Please process documents first'}
             return redirect(url_for('index'))
         
@@ -228,11 +219,10 @@ def ask_question():
             'sources': None
         })
         
-        # Get answer
-        session_data['status'] = {'type': 'loading', 'message': '🤖 Thinking...'}
+        # Get answer using our enhanced ask method
         start_time = time.time()
-        
         result = pipeline.ask(question)
+        elapsed = time.time() - start_time
         
         # Add bot response
         session_data['chat_history'].append({
@@ -241,7 +231,6 @@ def ask_question():
             'sources': result.get('sources', [])
         })
         
-        elapsed = time.time() - start_time
         session_data['status'] = {'type': 'success', 'message': f'✅ Answered in {elapsed:.1f}s'}
         
     except Exception as e:
