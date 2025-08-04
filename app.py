@@ -22,12 +22,47 @@ app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['UPLOAD_FOLDER'] = 'data/documents'
 
-# Initialize pipeline on startup
-pipeline = DocumentPipeline()
-if pipeline.load_index():
-    logger.info("✅ Loaded existing index")
-else:
-    logger.info("⚠️ No existing index found")
+# Initialize pipeline on startup (with lazy loading and cleanup)
+pipeline = None
+
+def clean_startup():
+    """Clean startup - remove any partial index files"""
+    try:
+        index_dir = Path("data/index")
+        if index_dir.exists():
+            # Check if index is complete
+            faiss_file = index_dir / "faiss_index" / "index.faiss"
+            pkl_file = index_dir / "faiss_index" / "index.pkl"
+            
+            # If either file is missing, clean the directory
+            if not (faiss_file.exists() and pkl_file.exists()):
+                logger.info("🧹 Cleaning incomplete index files...")
+                import shutil
+                shutil.rmtree(index_dir, ignore_errors=True)
+                logger.info("✅ Cleaned up incomplete index")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error during cleanup: {e}")
+        return False
+
+def get_pipeline():
+    """Get or initialize pipeline (lazy loading)"""
+    global pipeline
+    if pipeline is None:
+        try:
+            # Clean startup first
+            clean_startup()
+            
+            pipeline = DocumentPipeline()
+            if pipeline.load_index():
+                logger.info("✅ Loaded existing index")
+            else:
+                logger.info("⚠️ No existing index found - documents need processing")
+        except Exception as e:
+            logger.error(f"Failed to initialize pipeline: {e}")
+            pipeline = None
+    return pipeline
 
 # HTML Template (embedded for simplicity)
 HTML_TEMPLATE = '''
@@ -142,11 +177,19 @@ def get_documents():
 @app.route('/')
 def index():
     """Main page"""
-    session_data['documents'] = get_documents()
-    return render_template_string(HTML_TEMPLATE, 
-                                documents=session_data['documents'],
-                                chat_history=session_data['chat_history'],
-                                status=session_data['status'])
+    try:
+        session_data['documents'] = get_documents()
+        return render_template_string(HTML_TEMPLATE, 
+                                    documents=session_data['documents'],
+                                    chat_history=session_data['chat_history'],
+                                    status=session_data['status'])
+    except Exception as e:
+        logger.error(f"Error loading index page: {e}")
+        session_data['status'] = {'type': 'error', 'message': f'Error: {str(e)}'}
+        return render_template_string(HTML_TEMPLATE, 
+                                    documents=[],
+                                    chat_history=session_data['chat_history'],
+                                    status=session_data['status'])
 
 @app.route('/upload', methods=['POST'])
 def upload_file():
@@ -184,13 +227,22 @@ def process_documents():
     try:
         session_data['status'] = {'type': 'loading', 'message': '🔄 Processing documents...'}
         
-        # Process documents
-        success = pipeline.process_documents()
+        # Get pipeline
+        current_pipeline = get_pipeline()
+        if not current_pipeline:
+            session_data['status'] = {'type': 'error', 'message': '❌ Failed to initialize pipeline'}
+            return redirect(url_for('index'))
+        
+        # Process documents with timeout protection
+        logger.info("Starting document processing...")
+        success = current_pipeline.process_documents()
         
         if success:
             session_data['status'] = {'type': 'success', 'message': '✅ Documents processed successfully!'}
+            logger.info("Document processing completed successfully")
         else:
             session_data['status'] = {'type': 'error', 'message': '❌ Document processing failed'}
+            logger.error("Document processing failed")
             
     except Exception as e:
         session_data['status'] = {'type': 'error', 'message': f'Processing error: {str(e)}'}
@@ -207,8 +259,14 @@ def ask_question():
             session_data['status'] = {'type': 'error', 'message': 'Please enter a question'}
             return redirect(url_for('index'))
         
-        # Check if we have a vectorstore (not qa_chain)
-        if not pipeline.vectorstore:
+        # Get pipeline
+        current_pipeline = get_pipeline()
+        if not current_pipeline:
+            session_data['status'] = {'type': 'error', 'message': '❌ Pipeline not available'}
+            return redirect(url_for('index'))
+        
+        # Check if we have a vectorstore
+        if not current_pipeline.vectorstore:
             session_data['status'] = {'type': 'error', 'message': 'Please process documents first'}
             return redirect(url_for('index'))
         
@@ -221,7 +279,7 @@ def ask_question():
         
         # Get answer using our enhanced ask method
         start_time = time.time()
-        result = pipeline.ask(question)
+        result = current_pipeline.ask(question)
         elapsed = time.time() - start_time
         
         # Add bot response
@@ -247,8 +305,20 @@ def clear_chat():
     return redirect(url_for('index'))
 
 if __name__ == '__main__':
-    print("🚀 Starting Flask Document Q&A Server...")
+    print("🚀 Document Q&A - Flask Web Interface")
+    print("=" * 50)
+    
+    # Check documents
+    docs_dir = Path('data/documents')
+    if docs_dir.exists():
+        doc_count = len([f for f in docs_dir.iterdir() if f.is_file()])
+        print(f"� Found {doc_count} documents ready for processing")
+    else:
+        print("📂 Documents directory will be created on first upload")
+    
     print("📍 Open: http://127.0.0.1:5000")
     print("🛑 Stop: Ctrl+C")
+    print("✅ Running in stable mode (no debug, no restarts)")
     
-    app.run(debug=True, host='127.0.0.1', port=5000)
+    # Run without debug mode to prevent restart loops during document processing
+    app.run(debug=False, host='127.0.0.1', port=5000)

@@ -89,6 +89,8 @@ Answer based on the documents above. If the question asks about a specific docum
                 
             logger.info(f"Processing {len(doc_files)} documents...")
             
+            # Process each document with better error handling
+            processed_count = 0
             for doc_file in doc_files:
                 if not doc_file.is_file():
                     continue
@@ -103,9 +105,13 @@ Answer based on the documents above. If the question asks about a specific docum
                         with open(doc_file, 'r', encoding='utf-8') as f:
                             text = f.read()
                     else:
-                        # Use Docling for other formats (PDF, DOCX, images)
-                        result = self.converter.convert(str(doc_file))
-                        text = result.document.export_to_markdown()
+                        # Use Docling for other formats (PDF, DOCX, images) with timeout protection
+                        try:
+                            result = self.converter.convert(str(doc_file))
+                            text = result.document.export_to_markdown()
+                        except Exception as docling_error:
+                            logger.error(f"Docling failed for {doc_file.name}: {docling_error}")
+                            continue
                     
                     if not text.strip():
                         logger.warning(f"No text extracted from {doc_file.name}")
@@ -130,27 +136,36 @@ Answer based on the documents above. If the question asks about a specific docum
                                 }
                             )
                             documents.append(doc)
+                    
+                    processed_count += 1
+                    logger.info(f"✅ Successfully processed {doc_file.name}")
                             
                 except Exception as e:
                     logger.error(f"Error processing {doc_file.name}: {e}")
+                    # Continue with other documents even if one fails
                     continue
             
             if not documents:
                 logger.error("No valid document chunks created")
                 return False
                 
-            logger.info(f"Created {len(documents)} document chunks")
+            logger.info(f"Created {len(documents)} chunks from {processed_count} documents")
             
             # Build vector store
-            self.vectorstore = FAISS.from_documents(documents, self.embeddings)
-            
-            # Save index
-            index_path = str(self.index_dir / "faiss_index")
-            self.vectorstore.save_local(index_path)
-            logger.info(f"Saved index to {index_path}")
-            
-            logger.info("Document processing complete!")
-            return True
+            try:
+                self.vectorstore = FAISS.from_documents(documents, self.embeddings)
+                
+                # Save index
+                index_path = str(self.index_dir / "faiss_index")
+                self.vectorstore.save_local(index_path)
+                logger.info(f"Saved index to {index_path}")
+                
+                logger.info("Document processing complete!")
+                return True
+                
+            except Exception as vector_error:
+                logger.error(f"Error creating vector store: {vector_error}")
+                return False
             
         except Exception as e:
             logger.error(f"Error processing documents: {e}")

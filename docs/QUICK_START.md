@@ -31,13 +31,12 @@ You should see `llama3:latest` in the output.
 
 ### 3. Run the Application
 
-**Option A: Web Application (Recommended)**
 ```cmd
 python app.py
 ```
 Then open http://127.0.0.1:5000 in your browser.
 
-**Option B: Comprehensive Testing**
+**For Testing & Validation:**
 ```cmd
 python backend_debug.py
 ```
