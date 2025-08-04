@@ -93,23 +93,23 @@ class DocumentPipeline:
         
         self.embeddings = HuggingFaceEmbeddings(**embedding_kwargs)
         
-        # LLM with optimized settings for phi3:mini
+        # LLM optimized for phi3:mini with GPU acceleration
         self.llm = OllamaLLM(
             model=self.model_name,
-            temperature=0.1,  # Lower temperature for more focused responses
-            num_ctx=2048,     # Smaller context window for speed
-            num_predict=256,  # Limit response length for speed
-        )        # Optimized prompt template - concise but effective
+            temperature=0.1,      # Slight randomness for natural responses
+            num_ctx=1536,        # Balanced context window for GPU efficiency
+            num_predict=200,     # Adequate response length without overload
+        )        # Explicit prompt template to prevent hallucinations
         self.prompt_template = PromptTemplate(
             input_variables=["context", "question"],
-            template="""Based on the following documents, answer the question concisely:
+            template="""Answer the question using ONLY the provided documents. Do not add any information not found in the documents.
 
 Documents:
 {context}
 
 Question: {question}
 
-Answer:"""
+Answer (using only document information):"""
         )
         
         # Vector store
