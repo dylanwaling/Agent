@@ -28,7 +28,7 @@ class DocumentPipeline:
     def __init__(self, 
                  docs_dir: str = "data/documents",
                  index_dir: str = "data/index",
-                 model_name: str = "phi3:mini"):
+                 model_name: str = "llama3.2:1b"):
         
         self.docs_dir = Path(docs_dir)
         self.index_dir = Path(index_dir)
@@ -93,12 +93,12 @@ class DocumentPipeline:
         
         self.embeddings = HuggingFaceEmbeddings(**embedding_kwargs)
         
-        # LLM optimized for phi3:mini with GPU acceleration
+        # LLM optimized for llama3.2:1b ultra-fast performance
         self.llm = OllamaLLM(
             model=self.model_name,
             temperature=0.1,      # Slight randomness for natural responses
-            num_ctx=1536,        # Balanced context window for GPU efficiency
-            num_predict=200,     # Adequate response length without overload
+            num_ctx=2048,        # Good context window for the tiny model
+            num_predict=256,     # Allow adequate response length
         )        # Explicit prompt template to prevent hallucinations
         self.prompt_template = PromptTemplate(
             input_variables=["context", "question"],
