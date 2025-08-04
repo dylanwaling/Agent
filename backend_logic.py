@@ -28,7 +28,7 @@ class DocumentPipeline:
     def __init__(self, 
                  docs_dir: str = "data/documents",
                  index_dir: str = "data/index",
-                 model_name: str = "llama3:latest"):
+                 model_name: str = "phi3:mini"):
         
         self.docs_dir = Path(docs_dir)
         self.index_dir = Path(index_dir)
@@ -93,20 +93,23 @@ class DocumentPipeline:
         
         self.embeddings = HuggingFaceEmbeddings(**embedding_kwargs)
         
-        # LLM
-        self.llm = OllamaLLM(model=self.model_name)        # Custom prompt template optimized for Llama3
+        # LLM with optimized settings for phi3:mini
+        self.llm = OllamaLLM(
+            model=self.model_name,
+            temperature=0.1,  # Lower temperature for more focused responses
+            num_ctx=2048,     # Smaller context window for speed
+            num_predict=256,  # Limit response length for speed
+        )        # Optimized prompt template - concise but effective
         self.prompt_template = PromptTemplate(
             input_variables=["context", "question"],
-            template="""You are a helpful assistant that answers questions based on the provided document content.
+            template="""Based on the following documents, answer the question concisely:
 
-Use the following document excerpts to answer the question. Be direct and informative.
-
-Document Content:
+Documents:
 {context}
 
 Question: {question}
 
-Answer based on the documents above. If the question asks about a specific document or file, clearly identify which document contains the relevant information:"""
+Answer:"""
         )
         
         # Vector store
@@ -325,6 +328,9 @@ Answer based on the documents above. If the question asks about a specific docum
     
     def ask(self, question: str) -> Dict[str, Any]:
         """Ask a question about the documents using enhanced search logic"""
+        import time
+        start_time = time.time()
+        
         if not self.vectorstore:
             return {
                 "answer": "No documents processed yet. Please process documents first.",
@@ -333,7 +339,11 @@ Answer based on the documents above. If the question asks about a specific docum
             
         try:
             # Use our enhanced search method directly (same as debug search)
+            logger.info(f"Starting search for: {question}")
+            search_start = time.time()
             search_results = self.search(question)
+            search_time = time.time() - search_start
+            logger.info(f"Search completed in {search_time:.3f} seconds")
             
             if not search_results:
                 return {
@@ -341,11 +351,13 @@ Answer based on the documents above. If the question asks about a specific docum
                     "sources": []
                 }
             
-            # Prepare context from search results
+            # Prepare context from search results (optimized but functional)
+            logger.info(f"Preparing context from {len(search_results)} search results")
+            context_start = time.time()
             context_parts = []
             sources = []
             
-            for result in search_results[:3]:  # Use top 3 most relevant results
+            for result in search_results[:3]:  # Use top 3 most relevant results  
                 # Extract clean content (remove filename prefix)
                 content = result["content"]
                 source_name = result["source"]
@@ -367,12 +379,25 @@ Answer based on the documents above. If the question asks about a specific docum
                     "content": clean_content[:200] + "..." if len(clean_content) > 200 else clean_content
                 })
             
-            # Combine context
+            # Combine context with moderate length limit
             context = "\n\n".join(context_parts)
+            if len(context) > 1200:  # Reasonable context size limit
+                context = context[:1200] + "..."
+                
+            context_time = time.time() - context_start
+            logger.info(f"Context preparation completed in {context_time:.3f} seconds")
             
-            # Generate answer using LLM with context
+            # Generate answer using LangChain Ollama LLM
+            logger.info(f"Sending prompt to LLM (context length: {len(context)} chars)")
+            llm_start = time.time()
             prompt = self.prompt_template.format(context=context, question=question)
+            logger.info(f"Prompt formatted ({len(prompt)} chars), calling LLM...")
             answer = self.llm.invoke(prompt)
+            llm_time = time.time() - llm_start
+            logger.info(f"LLM response received in {llm_time:.3f} seconds")
+            
+            total_time = time.time() - start_time
+            logger.info(f"Total ask() time: {total_time:.3f} seconds (search: {search_time:.3f}s, context: {context_time:.3f}s, llm: {llm_time:.3f}s)")
             
             return {
                 "answer": answer,
