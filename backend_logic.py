@@ -480,6 +480,82 @@ Answer:"""
                 
         except Exception as e:
             yield f"Error processing question: {e}"
+
+    def process_single_document(self, file_path: Path) -> bool:
+        """Process a single document and add it to existing vectorstore"""
+        try:
+            if not self.vectorstore:
+                logger.warning("No existing vectorstore - processing single document as new collection")
+                return self.process_documents()
+            
+            logger.info(f"Processing single document: {file_path.name}")
+            
+            # Process the single document
+            if file_path.suffix.lower() == '.md':
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                document = Document(
+                    page_content=content,
+                    metadata={"source": file_path.name}
+                )
+                documents = [document]
+                
+            elif file_path.suffix.lower() == '.txt':
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                document = Document(
+                    page_content=content,
+                    metadata={"source": file_path.name}
+                )
+                documents = [document]
+                
+            elif file_path.suffix.lower() == '.pdf':
+                from docling.document_converter import DocumentConverter
+                converter = DocumentConverter()
+                result = converter.convert(file_path)
+                
+                content = result.document.export_to_markdown()
+                document = Document(
+                    page_content=content,
+                    metadata={"source": file_path.name}
+                )
+                documents = [document]
+                
+            else:
+                logger.warning(f"Unsupported file type: {file_path.suffix}")
+                return False
+            
+            # Split into chunks
+            chunks = self.text_splitter.split_documents(documents)
+            
+            # Add filename prefix to chunks for better search
+            processed_chunks = []
+            for chunk in chunks:
+                chunk_content = f"{file_path.stem} {file_path.stem} {chunk.page_content}"
+                processed_chunk = Document(
+                    page_content=chunk_content,
+                    metadata=chunk.metadata
+                )
+                processed_chunks.append(processed_chunk)
+            
+            logger.info(f"Created {len(processed_chunks)} chunks from {file_path.name}")
+            
+            # Add to existing vectorstore
+            self.vectorstore.add_documents(processed_chunks)
+            
+            # Save updated index
+            index_path = str(self.index_dir / "faiss_index")
+            self.vectorstore.save_local(index_path)
+            logger.info(f"Updated index saved to {index_path}")
+            
+            logger.info(f"✅ Single document processed: {file_path.name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error processing single document {file_path}: {e}")
+            return False
     
     def debug_search(self, query: str) -> Dict[str, Any]:
         """Debug search to see what's being retrieved using our enhanced search logic"""

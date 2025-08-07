@@ -1,0 +1,6 @@
+# Run the complete pipeline with Streamlit UI
+streamlit run app.py
+
+# Or test individual components
+python debug_utils.py --check [component]
+

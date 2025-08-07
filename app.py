@@ -64,7 +64,18 @@ def get_pipeline():
             
             # Initialize pipeline (it will auto-load existing index)
             pipeline = DocumentPipeline()
-            logger.info("✅ Pipeline initialized")
+            
+            # Auto-process documents if no index was loaded
+            if pipeline.vectorstore is None:
+                logger.info("🔄 No index found - automatically processing documents...")
+                success = pipeline.process_documents()
+                if success:
+                    logger.info("✅ Documents auto-processed successfully!")
+                else:
+                    logger.error("❌ Auto-processing failed")
+            else:
+                logger.info("✅ Pipeline initialized with existing index")
+                
         except Exception as e:
             logger.error(f"Failed to initialize pipeline: {e}")
             pipeline = None
@@ -319,8 +330,22 @@ def upload_file():
             file_path = upload_path / filename
             file.save(str(file_path))
             
-            session_data['status'] = {'type': 'success', 'message': f'✅ Uploaded: {filename}'}
             logger.info(f"File uploaded: {filename}")
+            
+            # Auto-process only the new document
+            session_data['status'] = {'type': 'loading', 'message': f'🔄 Processing new file: {filename}...'}
+            
+            current_pipeline = get_pipeline()
+            if current_pipeline:
+                success = current_pipeline.process_single_document(file_path)
+                if success:
+                    session_data['status'] = {'type': 'success', 'message': f'✅ Uploaded and processed: {filename}'}
+                    logger.info(f"New document processed: {filename}")
+                else:
+                    session_data['status'] = {'type': 'error', 'message': f'⚠️ Uploaded {filename} but processing failed'}
+                    logger.error(f"Single document processing failed: {filename}")
+            else:
+                session_data['status'] = {'type': 'error', 'message': f'⚠️ Uploaded {filename} but pipeline unavailable'}
         
     except Exception as e:
         session_data['status'] = {'type': 'error', 'message': f'Upload failed: {str(e)}'}
