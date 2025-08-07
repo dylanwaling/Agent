@@ -116,6 +116,13 @@ Answer:"""
         # Vector store
         self.vectorstore = None
         
+        # Try to load existing index on startup
+        logger.info("Checking for existing document index...")
+        if self.load_index():
+            logger.info("✅ Existing document index loaded successfully!")
+        else:
+            logger.info("No existing index found - documents will need to be processed")
+        
     def process_documents(self) -> bool:
         """Process all documents and build index"""
         try:
@@ -242,21 +249,38 @@ Answer:"""
         """Load existing index"""
         try:
             index_path = str(self.index_dir / "faiss_index")
-            if not Path(index_path + ".faiss").exists():
-                logger.warning("No existing index found")
+            logger.info(f"Attempting to load index from: {index_path}")
+            
+            # Check for the actual file locations (inside the faiss_index directory)
+            faiss_file = Path(index_path) / "index.faiss"
+            pkl_file = Path(index_path) / "index.pkl"
+            
+            logger.info(f"Looking for FAISS file at: {faiss_file}")
+            logger.info(f"Looking for PKL file at: {pkl_file}")
+            
+            if not faiss_file.exists():
+                logger.warning(f"FAISS file not found at: {faiss_file}")
                 return False
                 
+            if not pkl_file.exists():
+                logger.warning(f"PKL file not found at: {pkl_file}")
+                return False
+            
+            logger.info("Both index files found, loading vectorstore...")
             self.vectorstore = FAISS.load_local(
                 index_path, 
                 self.embeddings,
                 allow_dangerous_deserialization=True
             )
             
-            logger.info("Index loaded successfully")
+            logger.info(f"✅ Index loaded successfully! Vectorstore has {self.vectorstore.index.ntotal} vectors")
             return True
             
         except Exception as e:
             logger.error(f"Error loading index: {e}")
+            logger.error(f"Exception type: {type(e)}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             return False
     
     def search(self, query: str, score_threshold: float = 1.25) -> List[Dict[str, Any]]:

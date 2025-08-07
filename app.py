@@ -34,12 +34,20 @@ def clean_startup():
             faiss_file = index_dir / "faiss_index" / "index.faiss"
             pkl_file = index_dir / "faiss_index" / "index.pkl"
             
-            # If either file is missing, clean the directory
-            if not (faiss_file.exists() and pkl_file.exists()):
-                logger.info("🧹 Cleaning incomplete index files...")
+            logger.info(f"Checking index files:")
+            logger.info(f"FAISS file exists: {faiss_file.exists()} - {faiss_file}")
+            logger.info(f"PKL file exists: {pkl_file.exists()} - {pkl_file}")
+            
+            # Only clean if BOTH files are missing (not if one is missing)
+            if not faiss_file.exists() and not pkl_file.exists():
+                logger.info("🧹 No index files found - cleaning empty directory...")
                 import shutil
                 shutil.rmtree(index_dir, ignore_errors=True)
-                logger.info("✅ Cleaned up incomplete index")
+                logger.info("✅ Cleaned up empty index directory")
+            elif faiss_file.exists() and pkl_file.exists():
+                logger.info("✅ Complete index found - keeping existing files")
+            else:
+                logger.warning(f"⚠️ Partial index found - keeping files but may need reprocessing")
         
         return True
     except Exception as e:
@@ -54,11 +62,9 @@ def get_pipeline():
             # Clean startup first
             clean_startup()
             
+            # Initialize pipeline (it will auto-load existing index)
             pipeline = DocumentPipeline()
-            if pipeline.load_index():
-                logger.info("✅ Loaded existing index")
-            else:
-                logger.info("⚠️ No existing index found - documents need processing")
+            logger.info("✅ Pipeline initialized")
         except Exception as e:
             logger.error(f"Failed to initialize pipeline: {e}")
             pipeline = None
