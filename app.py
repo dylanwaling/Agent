@@ -78,10 +78,48 @@ HTML_TEMPLATE = '''
         .chat-section { flex: 2; }
         .document-list { background: #f5f5f5; padding: 15px; border-radius: 5px; margin: 10px 0; }
         .chat-box { height: 400px; overflow-y: auto; border: 1px solid #ddd; padding: 15px; margin: 10px 0; }
-        .message { margin: 10px 0; padding: 10px; border-radius: 5px; }
-        .user-message { background: #e3f2fd; text-align: right; }
-        .bot-message { background: #f1f8e9; }
-        .sources { background: #fff3e0; padding: 10px; margin: 5px 0; border-radius: 3px; font-size: 0.9em; }
+        .message { 
+            margin: 15px 0; 
+            padding: 0;
+            clear: both;
+        }
+        .message .content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 18px;
+            white-space: pre-wrap; 
+            word-wrap: break-word; 
+            line-height: 1.5; 
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 14px;
+        }
+        .user-message {
+            display: flex;
+            justify-content: flex-end;
+        }
+        .user-message .content {
+            background: #007AFF;
+            color: white;
+            border-bottom-right-radius: 5px;
+        }
+        .bot-message {
+            display: flex;
+            justify-content: flex-start;
+        }
+        .bot-message .content {
+            background: #F0F0F0;
+            color: #333;
+            border-bottom-left-radius: 5px;
+        }
+        .sources { 
+            background: #fff3e0; 
+            padding: 8px 12px; 
+            margin: 8px 0 0 0; 
+            border-radius: 12px; 
+            font-size: 0.85em; 
+            border-left: 3px solid #ff9800;
+            max-width: 100%;
+        }
         input[type="text"] { width: 70%; padding: 10px; }
         button { padding: 10px 20px; background: #2196F3; color: white; border: none; border-radius: 3px; cursor: pointer; }
         button:hover { background: #1976D2; }
@@ -89,6 +127,15 @@ HTML_TEMPLATE = '''
         .success { background: #d4edda; color: #155724; }
         .error { background: #f8d7da; color: #721c24; }
         .loading { background: #fff3cd; color: #856404; }
+        #cursor {
+            animation: blink 1s infinite;
+            font-weight: bold;
+            color: #333;
+        }
+        @keyframes blink {
+            0%, 50% { opacity: 1; }
+            51%, 100% { opacity: 0; }
+        }
     </style>
 </head>
 <body>
@@ -128,7 +175,7 @@ HTML_TEMPLATE = '''
             <div class="chat-box" id="chatBox">
                 {% for msg in chat_history %}
                 <div class="message {{ 'user-message' if msg.type == 'user' else 'bot-message' }}">
-                    <strong>{{ 'You' if msg.type == 'user' else '🤖' }}:</strong> {{ msg.content }}
+                    <div class="content">{{ msg.content }}</div>
                     {% if msg.sources %}
                     <div class="sources">
                         <strong>📚 Sources:</strong>
@@ -141,9 +188,9 @@ HTML_TEMPLATE = '''
                 {% endfor %}
             </div>
             
-            <form action="/ask" method="post">
-                <input type="text" name="question" placeholder="Ask a question about your documents..." required>
-                <button type="submit">Ask</button>
+            <form onsubmit="askStreaming(); return false;">
+                <input type="text" id="questionInput" name="question" placeholder="Ask a question about your documents..." required>
+                <button type="submit" id="streamButton">Ask</button>
             </form>
         </div>
     </div>
@@ -155,6 +202,60 @@ HTML_TEMPLATE = '''
             chatBox.scrollTop = chatBox.scrollHeight;
         }
         scrollToBottom();
+        
+        // Streaming function
+        function askStreaming() {
+            const question = document.getElementById('questionInput').value.trim();
+            if (!question) return;
+            
+            const button = document.getElementById('streamButton');
+            const chatBox = document.getElementById('chatBox');
+            
+            // Generate unique IDs for this conversation
+            const timestamp = Date.now();
+            const textId = 'streamingText_' + timestamp;
+            const cursorId = 'cursor_' + timestamp;
+            
+            // Add user message to chat with proper bubble styling
+            const userMsg = document.createElement('div');
+            userMsg.className = 'message user-message';
+            userMsg.innerHTML = '<div class="content">' + question + '</div>';
+            chatBox.appendChild(userMsg);
+            
+            // Add bot message container with proper bubble styling and unique IDs
+            const botMsg = document.createElement('div');
+            botMsg.className = 'message bot-message';
+            botMsg.innerHTML = '<div class="content"><span id="' + textId + '"></span><span id="' + cursorId + '">█</span></div>';
+            chatBox.appendChild(botMsg);
+            
+            const streamingText = document.getElementById(textId);
+            const cursor = document.getElementById(cursorId);
+            
+            button.disabled = true;
+            button.textContent = 'Thinking...';
+            scrollToBottom();
+            
+            fetch('/stream?question=' + encodeURIComponent(question))
+                .then(response => response.body.getReader())
+                .then(reader => {
+                    function readStream() {
+                        return reader.read().then(({ done, value }) => {
+                            if (done) {
+                                cursor.style.display = 'none'; // Hide cursor when done
+                                button.disabled = false;
+                                button.textContent = 'Ask';
+                                document.getElementById('questionInput').value = ''; // Clear input
+                                return;
+                            }
+                            const text = new TextDecoder().decode(value);
+                            streamingText.textContent += text;
+                            scrollToBottom();
+                            return readStream();
+                        });
+                    }
+                    return readStream();
+                });
+        }
     </script>
 </body>
 </html>
@@ -250,54 +351,31 @@ def process_documents():
     
     return redirect(url_for('index'))
 
-@app.route('/ask', methods=['POST'])
-def ask_question():
-    """Handle Q&A"""
-    try:
-        question = request.form.get('question', '').strip()
-        if not question:
-            session_data['status'] = {'type': 'error', 'message': 'Please enter a question'}
-            return redirect(url_for('index'))
-        
-        # Get pipeline
-        current_pipeline = get_pipeline()
-        if not current_pipeline:
-            session_data['status'] = {'type': 'error', 'message': '❌ Pipeline not available'}
-            return redirect(url_for('index'))
-        
-        # Check if we have a vectorstore
-        if not current_pipeline.vectorstore:
-            session_data['status'] = {'type': 'error', 'message': 'Please process documents first'}
-            return redirect(url_for('index'))
-        
-        # Add user message
-        session_data['chat_history'].append({
-            'type': 'user',
-            'content': question,
-            'sources': None
-        })
-        
-        # Get answer using our enhanced ask method
-        start_time = time.time()
-        result = current_pipeline.ask(question)
-        elapsed = time.time() - start_time
-        
-        # Add bot response
-        session_data['chat_history'].append({
-            'type': 'bot',
-            'content': result['answer'],
-            'sources': result.get('sources', [])
-        })
-        
-        session_data['status'] = {'type': 'success', 'message': f'✅ Answered in {elapsed:.1f}s'}
-        
-    except Exception as e:
-        session_data['status'] = {'type': 'error', 'message': f'Question failed: {str(e)}'}
-        logger.error(f"Q&A error: {e}")
+@app.route('/stream')
+def stream():
+    """Stream responses word by word"""
+    from flask import Response
     
-    return redirect(url_for('index'))
+    question = request.args.get('question', '').strip()
+    if not question:
+        return "No question provided", 400
+    
+    current_pipeline = get_pipeline()
+    if not current_pipeline or not current_pipeline.vectorstore:
+        return "Please process documents first", 400
+    
+    def generate():
+        for token in current_pipeline.ask_streaming(question):
+            yield token
+    
+    return Response(generate(), mimetype='text/plain')
 
 @app.route('/clear')
+def clear_chat():
+    """Clear chat history"""
+    session_data['chat_history'] = []
+    session_data['status'] = {'type': 'success', 'message': '🗑️ Chat cleared'}
+    return redirect(url_for('index'))
 def clear_chat():
     """Clear chat history"""
     session_data['chat_history'] = []

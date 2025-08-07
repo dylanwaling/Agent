@@ -99,6 +99,7 @@ class DocumentPipeline:
             temperature=0.2,      # Slightly higher for more thoughtful responses
             num_ctx=2048,        # Good context window
             num_predict=320,     # Allow longer responses for better reasoning
+            streaming=True,      # Enable streaming for word-by-word display
         )        # Enhanced prompt template for thoughtful responses
         self.prompt_template = PromptTemplate(
             input_variables=["context", "question"],
@@ -410,6 +411,51 @@ Answer:"""
                 "answer": f"Error processing question: {e}",
                 "sources": []
             }
+
+    def ask_streaming(self, question: str):
+        """Same as ask() but yields tokens as they're generated"""
+        if not self.vectorstore:
+            yield "No documents processed yet. Please process documents first."
+            return
+            
+        try:
+            # Use the same search logic as ask()
+            search_results = self.search(question)
+            if not search_results:
+                yield "No relevant documents found for your question."
+                return
+            
+            # Prepare context the same way
+            context_parts = []
+            sources = []
+            
+            for result in search_results[:3]:
+                content = result["content"]
+                source_name = result["source"]
+                parts = content.split(' ', 2)
+                if len(parts) >= 3:
+                    clean_content = parts[2]
+                else:
+                    clean_content = content
+                
+                contextual_content = f"From document '{source_name}':\n{clean_content}"
+                context_parts.append(contextual_content)
+                sources.append({
+                    "source": source_name,
+                    "content": clean_content[:200] + "..." if len(clean_content) > 200 else clean_content
+                })
+            
+            context = "\n\n".join(context_parts)
+            if len(context) > 1200:
+                context = context[:1200] + "..."
+            
+            # Stream the response word by word
+            prompt = self.prompt_template.format(context=context, question=question)
+            for token in self.llm.stream(prompt):
+                yield token
+                
+        except Exception as e:
+            yield f"Error processing question: {e}"
     
     def debug_search(self, query: str) -> Dict[str, Any]:
         """Debug search to see what's being retrieved using our enhanced search logic"""
