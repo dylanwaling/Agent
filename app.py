@@ -176,8 +176,8 @@ HTML_TEMPLATE = '''
                 </ul>
             </div>
             
-            <form action="/process" method="post" style="margin-top: 20px;">
-                <button type="submit">🔄 Process All Documents</button>
+            <form action="/remove_all" method="post" style="margin-top: 20px;">
+                <button type="submit">�️ Remove All Documents</button>
             </form>
         </div>
         
@@ -353,32 +353,41 @@ def upload_file():
     
     return redirect(url_for('index'))
 
-@app.route('/process', methods=['POST'])
-def process_documents():
-    """Process all documents"""
+@app.route('/remove_all', methods=['POST'])
+def remove_all_documents():
+    """Remove all documents and clear the index"""
     try:
-        session_data['status'] = {'type': 'loading', 'message': '🔄 Processing documents...'}
+        session_data['status'] = {'type': 'loading', 'message': '�️ Removing all documents...'}
         
-        # Get pipeline
-        current_pipeline = get_pipeline()
-        if not current_pipeline:
-            session_data['status'] = {'type': 'error', 'message': '❌ Failed to initialize pipeline'}
-            return redirect(url_for('index'))
+        # Clear documents directory
+        docs_dir = Path('data/documents')
+        if docs_dir.exists():
+            import shutil
+            for file_path in docs_dir.iterdir():
+                if file_path.is_file():
+                    file_path.unlink()
+                    logger.info(f"Deleted document: {file_path.name}")
         
-        # Process documents with timeout protection
-        logger.info("Starting document processing...")
-        success = current_pipeline.process_documents()
+        # Clear index directory
+        index_dir = Path('data/index')
+        if index_dir.exists():
+            import shutil
+            shutil.rmtree(index_dir, ignore_errors=True)
+            logger.info("Deleted index directory")
         
-        if success:
-            session_data['status'] = {'type': 'success', 'message': '✅ Documents processed successfully!'}
-            logger.info("Document processing completed successfully")
-        else:
-            session_data['status'] = {'type': 'error', 'message': '❌ Document processing failed'}
-            logger.error("Document processing failed")
+        # Reset pipeline
+        global pipeline
+        pipeline = None
+        
+        # Clear session data
+        session_data['chat_history'] = []
+        
+        session_data['status'] = {'type': 'success', 'message': '✅ All documents removed successfully!'}
+        logger.info("All documents and index removed successfully")
             
     except Exception as e:
-        session_data['status'] = {'type': 'error', 'message': f'Processing error: {str(e)}'}
-        logger.error(f"Processing error: {e}")
+        session_data['status'] = {'type': 'error', 'message': f'Remove error: {str(e)}'}
+        logger.error(f"Remove error: {e}")
     
     return redirect(url_for('index'))
 
