@@ -1,0 +1,509 @@
+{
+  "session_start": 1765333593.2066925,
+  "session_duration": 4.749375820159912,
+  "start_memory_mb": 745.59765625,
+  "end_memory_mb": 940.2890625,
+  "metrics": [
+    {
+      "operation": "initialization_gpu_detection",
+      "start_time": 1765333593.2077215,
+      "end_time": 1765333593.2077215,
+      "duration": 0.0,
+      "memory_start": 745.59765625,
+      "memory_end": 745.59765625,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "available": true,
+        "name": "NVIDIA GeForce RTX 3060",
+        "memory_gb": 12.8843776
+      }
+    },
+    {
+      "operation": "initialization_docling_converter",
+      "start_time": 1765333593.2077215,
+      "end_time": 1765333593.2077215,
+      "duration": 0.0,
+      "memory_start": 745.59765625,
+      "memory_end": 745.59765625,
+      "memory_delta": 0.0,
+      "success": false,
+      "error": "Not found",
+      "metadata": {}
+    },
+    {
+      "operation": "initialization_text_splitter",
+      "start_time": 1765333593.2077215,
+      "end_time": 1765333593.2077215,
+      "duration": 0.0,
+      "memory_start": 745.59765625,
+      "memory_end": 745.59765625,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "initialization_embeddings",
+      "start_time": 1765333593.2077215,
+      "end_time": 1765333593.2077215,
+      "duration": 0.0,
+      "memory_start": 745.59765625,
+      "memory_end": 745.59765625,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "initialization_llm",
+      "start_time": 1765333593.208724,
+      "end_time": 1765333593.208724,
+      "duration": 0.0,
+      "memory_start": 745.59765625,
+      "memory_end": 745.59765625,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "initialization_prompt_template",
+      "start_time": 1765333593.208724,
+      "end_time": 1765333593.208724,
+      "duration": 0.0,
+      "memory_start": 745.59765625,
+      "memory_end": 745.59765625,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "processing_file_read",
+      "start_time": 1765333593.2097266,
+      "end_time": 1765333593.2097266,
+      "duration": 0.0,
+      "memory_start": 745.59765625,
+      "memory_end": 745.609375,
+      "memory_delta": 0.01171875,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "file_size_kb": 7.6962890625
+      }
+    },
+    {
+      "operation": "processing_text_chunking",
+      "start_time": 1765333593.2097266,
+      "end_time": 1765333593.2097266,
+      "duration": 0.0,
+      "memory_start": 745.609375,
+      "memory_end": 745.609375,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "chunk_count": 12
+      }
+    },
+    {
+      "operation": "processing_embedding_generation",
+      "start_time": 1765333593.2097266,
+      "end_time": 1765333593.3861125,
+      "duration": 0.17638587951660156,
+      "memory_start": 745.609375,
+      "memory_end": 930.1875,
+      "memory_delta": 184.578125,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "chunks_embedded": 5,
+        "embedding_dim": 384
+      }
+    },
+    {
+      "operation": "processing_faiss_indexing",
+      "start_time": 1765333593.3861125,
+      "end_time": 1765333593.3861125,
+      "duration": 0.0,
+      "memory_start": 930.1875,
+      "memory_end": 930.1875,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "search_query_embedding",
+      "start_time": 1765333593.3871155,
+      "end_time": 1765333593.4020422,
+      "duration": 0.014926671981811523,
+      "memory_start": 930.1875,
+      "memory_end": 939.6640625,
+      "memory_delta": 9.4765625,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "vector_dim": 384
+      }
+    },
+    {
+      "operation": "search_faiss_similarity",
+      "start_time": 1765333593.4020422,
+      "end_time": 1765333593.454894,
+      "duration": 0.05285191535949707,
+      "memory_start": 939.6640625,
+      "memory_end": 940.046875,
+      "memory_delta": 0.3828125,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "results_count": 15
+      }
+    },
+    {
+      "operation": "search_enhanced_filtering",
+      "start_time": 1765333593.454894,
+      "end_time": 1765333593.4634476,
+      "duration": 0.008553504943847656,
+      "memory_start": 940.046875,
+      "memory_end": 940.046875,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "filtered_count": 14
+      }
+    },
+    {
+      "operation": "search_query_embedding",
+      "start_time": 1765333593.4634476,
+      "end_time": 1765333593.4806285,
+      "duration": 0.017180919647216797,
+      "memory_start": 940.046875,
+      "memory_end": 940.04296875,
+      "memory_delta": -0.00390625,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "vector_dim": 384
+      }
+    },
+    {
+      "operation": "search_faiss_similarity",
+      "start_time": 1765333593.4816253,
+      "end_time": 1765333593.489916,
+      "duration": 0.008290767669677734,
+      "memory_start": 940.04296875,
+      "memory_end": 940.04296875,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "results_count": 15
+      }
+    },
+    {
+      "operation": "search_enhanced_filtering",
+      "start_time": 1765333593.489916,
+      "end_time": 1765333593.498523,
+      "duration": 0.008606910705566406,
+      "memory_start": 940.04296875,
+      "memory_end": 940.04296875,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "filtered_count": 15
+      }
+    },
+    {
+      "operation": "search_query_embedding",
+      "start_time": 1765333593.498523,
+      "end_time": 1765333593.505957,
+      "duration": 0.007433891296386719,
+      "memory_start": 940.04296875,
+      "memory_end": 940.04296875,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "vector_dim": 384
+      }
+    },
+    {
+      "operation": "search_faiss_similarity",
+      "start_time": 1765333593.505957,
+      "end_time": 1765333593.5134647,
+      "duration": 0.007507801055908203,
+      "memory_start": 940.04296875,
+      "memory_end": 940.04296875,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "results_count": 15
+      }
+    },
+    {
+      "operation": "search_enhanced_filtering",
+      "start_time": 1765333593.5134647,
+      "end_time": 1765333593.5203526,
+      "duration": 0.006887912750244141,
+      "memory_start": 940.04296875,
+      "memory_end": 940.04296875,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "filtered_count": 14
+      }
+    },
+    {
+      "operation": "search_query_embedding",
+      "start_time": 1765333593.5213788,
+      "end_time": 1765333593.527598,
+      "duration": 0.006219148635864258,
+      "memory_start": 940.04296875,
+      "memory_end": 940.04296875,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "vector_dim": 384
+      }
+    },
+    {
+      "operation": "search_faiss_similarity",
+      "start_time": 1765333593.527598,
+      "end_time": 1765333593.5359237,
+      "duration": 0.008325815200805664,
+      "memory_start": 940.04296875,
+      "memory_end": 940.04296875,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "results_count": 15
+      }
+    },
+    {
+      "operation": "search_enhanced_filtering",
+      "start_time": 1765333593.5359237,
+      "end_time": 1765333593.5430865,
+      "duration": 0.007162809371948242,
+      "memory_start": 940.04296875,
+      "memory_end": 940.04296875,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "filtered_count": 14
+      }
+    },
+    {
+      "operation": "qa_full_pipeline",
+      "start_time": 1765333593.5430865,
+      "end_time": 1765333597.0099723,
+      "duration": 3.466885805130005,
+      "memory_start": 940.04296875,
+      "memory_end": 940.25,
+      "memory_delta": 0.20703125,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "answer_length": 1012,
+        "sources_count": 8
+      }
+    },
+    {
+      "operation": "qa_full_pipeline",
+      "start_time": 1765333597.0114858,
+      "end_time": 1765333597.9511688,
+      "duration": 0.9396829605102539,
+      "memory_start": 940.25,
+      "memory_end": 940.2890625,
+      "memory_delta": 0.0390625,
+      "success": true,
+      "error": null,
+      "metadata": {
+        "answer_length": 284,
+        "sources_count": 8
+      }
+    }
+  ],
+  "profiles": {
+    "search_query_embedding": {
+      "section_name": "search_query_embedding",
+      "total_time": 0.0457606315612793,
+      "call_count": 4,
+      "avg_time": 0.011440157890319824,
+      "min_time": 0.006219148635864258,
+      "max_time": 0.017180919647216797,
+      "total_memory": 9.47265625,
+      "avg_memory": 2.3681640625,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "initialization_docling_converter": {
+      "section_name": "initialization_docling_converter",
+      "total_time": 0.0,
+      "call_count": 1,
+      "avg_time": 0.0,
+      "min_time": 0.0,
+      "max_time": 0.0,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 0.0,
+      "errors": [
+        "Not found"
+      ]
+    },
+    "processing_file_read": {
+      "section_name": "processing_file_read",
+      "total_time": 0.0,
+      "call_count": 1,
+      "avg_time": 0.0,
+      "min_time": 0.0,
+      "max_time": 0.0,
+      "total_memory": 0.01171875,
+      "avg_memory": 0.01171875,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "initialization_llm": {
+      "section_name": "initialization_llm",
+      "total_time": 0.0,
+      "call_count": 1,
+      "avg_time": 0.0,
+      "min_time": 0.0,
+      "max_time": 0.0,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "processing_embedding_generation": {
+      "section_name": "processing_embedding_generation",
+      "total_time": 0.17638587951660156,
+      "call_count": 1,
+      "avg_time": 0.17638587951660156,
+      "min_time": 0.17638587951660156,
+      "max_time": 0.17638587951660156,
+      "total_memory": 184.578125,
+      "avg_memory": 184.578125,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "initialization_embeddings": {
+      "section_name": "initialization_embeddings",
+      "total_time": 0.0,
+      "call_count": 1,
+      "avg_time": 0.0,
+      "min_time": 0.0,
+      "max_time": 0.0,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "processing_faiss_indexing": {
+      "section_name": "processing_faiss_indexing",
+      "total_time": 0.0,
+      "call_count": 1,
+      "avg_time": 0.0,
+      "min_time": 0.0,
+      "max_time": 0.0,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "processing_text_chunking": {
+      "section_name": "processing_text_chunking",
+      "total_time": 0.0,
+      "call_count": 1,
+      "avg_time": 0.0,
+      "min_time": 0.0,
+      "max_time": 0.0,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "initialization_prompt_template": {
+      "section_name": "initialization_prompt_template",
+      "total_time": 0.0,
+      "call_count": 1,
+      "avg_time": 0.0,
+      "min_time": 0.0,
+      "max_time": 0.0,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "initialization_gpu_detection": {
+      "section_name": "initialization_gpu_detection",
+      "total_time": 0.0,
+      "call_count": 1,
+      "avg_time": 0.0,
+      "min_time": 0.0,
+      "max_time": 0.0,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "initialization_text_splitter": {
+      "section_name": "initialization_text_splitter",
+      "total_time": 0.0,
+      "call_count": 1,
+      "avg_time": 0.0,
+      "min_time": 0.0,
+      "max_time": 0.0,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "qa_full_pipeline": {
+      "section_name": "qa_full_pipeline",
+      "total_time": 4.406568765640259,
+      "call_count": 2,
+      "avg_time": 2.2032843828201294,
+      "min_time": 0.9396829605102539,
+      "max_time": 3.466885805130005,
+      "total_memory": 0.24609375,
+      "avg_memory": 0.123046875,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "search_enhanced_filtering": {
+      "section_name": "search_enhanced_filtering",
+      "total_time": 0.031211137771606445,
+      "call_count": 4,
+      "avg_time": 0.007802784442901611,
+      "min_time": 0.006887912750244141,
+      "max_time": 0.008606910705566406,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "search_faiss_similarity": {
+      "section_name": "search_faiss_similarity",
+      "total_time": 0.07697629928588867,
+      "call_count": 4,
+      "avg_time": 0.019244074821472168,
+      "min_time": 0.007507801055908203,
+      "max_time": 0.05285191535949707,
+      "total_memory": 0.3828125,
+      "avg_memory": 0.095703125,
+      "success_rate": 100.0,
+      "errors": []
+    }
+  }
+}
