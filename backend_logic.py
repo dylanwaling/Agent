@@ -96,21 +96,27 @@ class DocumentPipeline:
         # LLM optimized for qwen2.5:1.5b - excellent reasoning performance
         self.llm = OllamaLLM(
             model=self.model_name,
-            temperature=0.2,      # Slightly higher for more thoughtful responses
-            num_ctx=2048,        # Good context window
-            num_predict=320,     # Allow longer responses for better reasoning
+            temperature=0.3,      # Balanced for thoughtful but focused responses
+            num_ctx=4096,        # Larger context window for more document content
+            num_predict=800,     # Much longer responses for completeness
             streaming=True,      # Enable streaming for word-by-word display
         )        # Enhanced prompt template for thoughtful responses
         self.prompt_template = PromptTemplate(
             input_variables=["context", "question"],
-            template="""Based on the provided documents, give a comprehensive and helpful answer. Explain concepts clearly and provide context when useful.
+            template="""You are a helpful assistant analyzing documents. Using ONLY the information in the documents provided below, give a complete and accurate answer to the question. 
+
+IMPORTANT:
+- Be thorough and include all relevant details from the documents
+- If information is incomplete or missing, say so explicitly
+- Cite which document(s) you're referring to
+- Give a full, complete response - don't cut off mid-thought
 
 Documents:
 {context}
 
 Question: {question}
 
-Answer:"""
+Complete Answer:"""
         )
         
         # Vector store
@@ -382,7 +388,7 @@ Answer:"""
             context_parts = []
             sources = []
             
-            for result in search_results[:3]:  # Use top 3 most relevant results  
+            for result in search_results[:8]:  # Use top 8 results for comprehensive context
                 # Extract clean content (remove filename prefix)
                 content = result["content"]
                 source_name = result["source"]
@@ -404,10 +410,10 @@ Answer:"""
                     "content": clean_content[:200] + "..." if len(clean_content) > 200 else clean_content
                 })
             
-            # Combine context with moderate length limit
+            # Combine context with larger length limit for comprehensive answers
             context = "\n\n".join(context_parts)
-            if len(context) > 1200:  # Reasonable context size limit
-                context = context[:1200] + "..."
+            if len(context) > 3500:  # Much larger context for complete information
+                context = context[:3500] + "..."
                 
             context_time = time.time() - context_start
             logger.info(f"Context preparation completed in {context_time:.3f} seconds")
@@ -449,11 +455,11 @@ Answer:"""
                 yield "No relevant documents found for your question."
                 return
             
-            # Prepare context the same way
+            # Prepare context the same way as ask() - use more results for completeness
             context_parts = []
             sources = []
             
-            for result in search_results[:3]:
+            for result in search_results[:8]:  # Match the ask() method
                 content = result["content"]
                 source_name = result["source"]
                 parts = content.split(' ', 2)
@@ -470,8 +476,8 @@ Answer:"""
                 })
             
             context = "\n\n".join(context_parts)
-            if len(context) > 1200:
-                context = context[:1200] + "..."
+            if len(context) > 3500:  # Match the ask() method's larger limit
+                context = context[:3500] + "..."
             
             # Stream the response word by word
             prompt = self.prompt_template.format(context=context, question=question)
