@@ -123,6 +123,7 @@ class LiveMonitorGUI:
             ("Operation 18", lambda: self.show_placeholder("Operation 18")),
             ("Operation 19", lambda: self.show_placeholder("Operation 19")),
             ("Operation 20", lambda: self.show_placeholder("Operation 20")),
+            ("Operation 21", lambda: self.show_placeholder("Operation 21")),
         ]
         
         row = 1
