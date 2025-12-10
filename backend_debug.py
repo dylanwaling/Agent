@@ -7,10 +7,173 @@ Combined testing for document processing, search, Q&A functionality, and system 
 import sys
 import os
 import tempfile
+import time
+import json
+import psutil
 from pathlib import Path
+from typing import Dict, List, Any, Optional
+from dataclasses import dataclass, asdict
 sys.path.append(str(Path(__file__).parent))
 
 from backend_logic import DocumentPipeline
+
+# ============================================================================
+# PERFORMANCE MONITORING CLASSES
+# ============================================================================
+
+@dataclass
+class TimingMetric:
+    """Performance timing for a specific operation"""
+    operation: str
+    start_time: float
+    end_time: float
+    duration: float
+    memory_start: float
+    memory_end: float
+    memory_delta: float
+    success: bool
+    error: Optional[str] = None
+    metadata: Optional[Dict] = None
+
+@dataclass
+class SectionProfile:
+    """Profile for a pipeline section"""
+    section_name: str
+    total_time: float
+    call_count: int
+    avg_time: float
+    min_time: float
+    max_time: float
+    total_memory: float
+    avg_memory: float
+    success_rate: float
+    errors: List[str]
+
+class PerformanceMonitor:
+    """Real-time performance monitoring for pipeline operations"""
+    
+    def __init__(self):
+        self.metrics: List[TimingMetric] = []
+        self.process = psutil.Process()
+        self.start_memory = self.get_memory_mb()
+        self.session_start = time.time()
+        
+    def get_memory_mb(self) -> float:
+        """Get current memory usage in MB"""
+        return self.process.memory_info().rss / 1024 / 1024
+    
+    def start_operation(self, operation: str) -> Dict[str, Any]:
+        """Start timing an operation"""
+        return {
+            'operation': operation,
+            'start_time': time.time(),
+            'memory_start': self.get_memory_mb()
+        }
+    
+    def end_operation(self, context: Dict[str, Any], success: bool = True, 
+                     error: Optional[str] = None, metadata: Optional[Dict] = None) -> TimingMetric:
+        """End timing an operation and record metrics"""
+        end_time = time.time()
+        memory_end = self.get_memory_mb()
+        
+        metric = TimingMetric(
+            operation=context['operation'],
+            start_time=context['start_time'],
+            end_time=end_time,
+            duration=end_time - context['start_time'],
+            memory_start=context['memory_start'],
+            memory_end=memory_end,
+            memory_delta=memory_end - context['memory_start'],
+            success=success,
+            error=error,
+            metadata=metadata or {}
+        )
+        
+        self.metrics.append(metric)
+        return metric
+    
+    def get_section_profile(self, section_name: str) -> SectionProfile:
+        """Get aggregate profile for a specific section"""
+        section_metrics = [m for m in self.metrics if m.operation == section_name]
+        
+        if not section_metrics:
+            return SectionProfile(
+                section_name=section_name,
+                total_time=0, call_count=0, avg_time=0,
+                min_time=0, max_time=0, total_memory=0,
+                avg_memory=0, success_rate=0, errors=[]
+            )
+        
+        durations = [m.duration for m in section_metrics]
+        memories = [m.memory_delta for m in section_metrics]
+        successes = [m.success for m in section_metrics]
+        errors = [m.error for m in section_metrics if m.error]
+        
+        return SectionProfile(
+            section_name=section_name,
+            total_time=sum(durations),
+            call_count=len(section_metrics),
+            avg_time=sum(durations) / len(durations),
+            min_time=min(durations),
+            max_time=max(durations),
+            total_memory=sum(memories),
+            avg_memory=sum(memories) / len(memories),
+            success_rate=sum(successes) / len(successes) * 100,
+            errors=errors
+        )
+    
+    def get_all_profiles(self) -> Dict[str, SectionProfile]:
+        """Get profiles for all sections"""
+        operations = set(m.operation for m in self.metrics)
+        return {op: self.get_section_profile(op) for op in operations}
+    
+    def print_summary(self):
+        """Print performance summary"""
+        total_time = time.time() - self.session_start
+        total_memory = self.get_memory_mb() - self.start_memory
+        
+        print("\n" + "=" * 70)
+        print("📊 PERFORMANCE SUMMARY")
+        print("=" * 70)
+        print(f"⏱️  Total Session Time: {total_time:.2f}s")
+        print(f"💾 Total Memory Delta: {total_memory:+.2f} MB")
+        print(f"📈 Total Operations: {len(self.metrics)}")
+        if self.metrics:
+            print(f"🎯 Success Rate: {sum(m.success for m in self.metrics) / len(self.metrics) * 100:.1f}%")
+        
+        profiles = self.get_all_profiles()
+        
+        print("\n📍 Section Breakdown:")
+        print("-" * 70)
+        
+        for section_name, profile in sorted(profiles.items(), key=lambda x: x[1].total_time, reverse=True):
+            print(f"\n🔹 {section_name}")
+            print(f"   Time: {profile.total_time:.3f}s total | {profile.avg_time:.3f}s avg | {profile.min_time:.3f}s min | {profile.max_time:.3f}s max")
+            print(f"   Calls: {profile.call_count}")
+            print(f"   Memory: {profile.avg_memory:+.2f} MB avg")
+            print(f"   Success: {profile.success_rate:.1f}%")
+            if profile.errors:
+                print(f"   ⚠️  Errors: {len(profile.errors)}")
+    
+    def export_json(self, filepath: str):
+        """Export metrics to JSON file"""
+        data = {
+            'session_start': self.session_start,
+            'session_duration': time.time() - self.session_start,
+            'start_memory_mb': self.start_memory,
+            'end_memory_mb': self.get_memory_mb(),
+            'metrics': [asdict(m) for m in self.metrics],
+            'profiles': {name: asdict(profile) for name, profile in self.get_all_profiles().items()}
+        }
+        
+        with open(filepath, 'w') as f:
+            json.dump(data, f, indent=2)
+        
+        print(f"📊 Metrics exported to: {filepath}")
+
+# ============================================================================
+# TESTING FUNCTIONS
+# ============================================================================
 
 def test_system_components():
     """Test system components and dependencies"""
@@ -426,42 +589,79 @@ def run_performance_test(pipeline):
     print(f"📊 Average search time: {avg_time:.3f}s")
 
 def main():
-    """Run all tests"""
-    print("🧪 COMPREHENSIVE DOCUMENT PIPELINE TESTING")
+    """Run all tests with performance monitoring"""
+    print("🧪 COMPREHENSIVE DOCUMENT PIPELINE TESTING & ANALYSIS")
     print("=" * 60)
     
-    # Test system components first
-    if not test_system_components():
-        print("⚠️ Some system components have issues, but continuing...")
+    # Initialize performance monitor
+    monitor = PerformanceMonitor()
     
-    # Inspect database content
-    inspect_database_content()
-    
-    # Initialize pipeline
-    pipeline = test_initialization()
-    if not pipeline:
-        print("❌ Cannot continue without pipeline")
-        return
-    
-    # Test document processing
-    if not test_document_processing(pipeline):
-        print("❌ Cannot continue without processed documents")
-        return
-    
-    # Test search functionality
-    test_search_functionality(pipeline)
-    
-    # Test Q&A functionality
-    test_qa_functionality(pipeline)
-    
-    # Test edge cases
-    test_edge_cases(pipeline)
-    
-    # Performance test
-    run_performance_test(pipeline)
-    
-    print("\n🎉 All tests completed!")
-    print("=" * 60)
+    try:
+        # Test system components first
+        ctx = monitor.start_operation("test_system_components")
+        success = test_system_components()
+        monitor.end_operation(ctx, success=success)
+        if not success:
+            print("⚠️ Some system components have issues, but continuing...")
+        
+        # Inspect database content
+        ctx = monitor.start_operation("inspect_database_content")
+        inspect_database_content()
+        monitor.end_operation(ctx, success=True)
+        
+        # Initialize pipeline
+        ctx = monitor.start_operation("test_initialization")
+        pipeline = test_initialization()
+        monitor.end_operation(ctx, success=pipeline is not None)
+        if not pipeline:
+            print("❌ Cannot continue without pipeline")
+            return
+        
+        # Test document processing
+        ctx = monitor.start_operation("test_document_processing")
+        processing_success = test_document_processing(pipeline)
+        monitor.end_operation(ctx, success=processing_success)
+        if not processing_success:
+            print("❌ Cannot continue without processed documents")
+            return
+        
+        # Test search functionality
+        ctx = monitor.start_operation("test_search_functionality")
+        test_search_functionality(pipeline)
+        monitor.end_operation(ctx, success=True)
+        
+        # Test Q&A functionality
+        ctx = monitor.start_operation("test_qa_functionality")
+        test_qa_functionality(pipeline)
+        monitor.end_operation(ctx, success=True)
+        
+        # Test edge cases
+        ctx = monitor.start_operation("test_edge_cases")
+        test_edge_cases(pipeline)
+        monitor.end_operation(ctx, success=True)
+        
+        # Performance test
+        ctx = monitor.start_operation("run_performance_test")
+        run_performance_test(pipeline)
+        monitor.end_operation(ctx, success=True)
+        
+        print("\n🎉 All tests completed!")
+        print("=" * 60)
+        
+        # Print performance summary
+        monitor.print_summary()
+        
+        # Export metrics
+        monitor.export_json("data/test_performance_metrics.json")
+        
+    except KeyboardInterrupt:
+        print("\n\n⚠️  Testing interrupted by user")
+        monitor.print_summary()
+    except Exception as e:
+        print(f"\n❌ Fatal error during testing: {e}")
+        import traceback
+        traceback.print_exc()
+        monitor.print_summary()
 
 if __name__ == "__main__":
     main()

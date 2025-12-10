@@ -1,0 +1,202 @@
+{
+  "session_start": 1765334745.833148,
+  "session_duration": 31.22464609146118,
+  "start_memory_mb": 577.87890625,
+  "end_memory_mb": 947.33984375,
+  "metrics": [
+    {
+      "operation": "test_system_components",
+      "start_time": 1765334745.833148,
+      "end_time": 1765334752.8926382,
+      "duration": 7.059490203857422,
+      "memory_start": 577.87890625,
+      "memory_end": 935.609375,
+      "memory_delta": 357.73046875,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "inspect_database_content",
+      "start_time": 1765334752.8926382,
+      "end_time": 1765334752.8926382,
+      "duration": 0.0,
+      "memory_start": 935.609375,
+      "memory_end": 935.609375,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "test_initialization",
+      "start_time": 1765334752.8926382,
+      "end_time": 1765334754.7568235,
+      "duration": 1.8641853332519531,
+      "memory_start": 935.609375,
+      "memory_end": 946.85546875,
+      "memory_delta": 11.24609375,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "test_document_processing",
+      "start_time": 1765334754.7568235,
+      "end_time": 1765334754.7578208,
+      "duration": 0.000997304916381836,
+      "memory_start": 946.85546875,
+      "memory_end": 946.85546875,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "test_search_functionality",
+      "start_time": 1765334754.7578208,
+      "end_time": 1765334754.9821095,
+      "duration": 0.2242887020111084,
+      "memory_start": 946.85546875,
+      "memory_end": 947.2421875,
+      "memory_delta": 0.38671875,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "test_qa_functionality",
+      "start_time": 1765334754.9821095,
+      "end_time": 1765334764.53691,
+      "duration": 9.554800510406494,
+      "memory_start": 947.2421875,
+      "memory_end": 947.296875,
+      "memory_delta": 0.0546875,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "test_edge_cases",
+      "start_time": 1765334764.53691,
+      "end_time": 1765334777.0174134,
+      "duration": 12.48050332069397,
+      "memory_start": 947.296875,
+      "memory_end": 947.33984375,
+      "memory_delta": 0.04296875,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "run_performance_test",
+      "start_time": 1765334777.0174134,
+      "end_time": 1765334777.0556307,
+      "duration": 0.03821730613708496,
+      "memory_start": 947.33984375,
+      "memory_end": 947.33984375,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    }
+  ],
+  "profiles": {
+    "test_qa_functionality": {
+      "section_name": "test_qa_functionality",
+      "total_time": 9.554800510406494,
+      "call_count": 1,
+      "avg_time": 9.554800510406494,
+      "min_time": 9.554800510406494,
+      "max_time": 9.554800510406494,
+      "total_memory": 0.0546875,
+      "avg_memory": 0.0546875,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "test_search_functionality": {
+      "section_name": "test_search_functionality",
+      "total_time": 0.2242887020111084,
+      "call_count": 1,
+      "avg_time": 0.2242887020111084,
+      "min_time": 0.2242887020111084,
+      "max_time": 0.2242887020111084,
+      "total_memory": 0.38671875,
+      "avg_memory": 0.38671875,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "run_performance_test": {
+      "section_name": "run_performance_test",
+      "total_time": 0.03821730613708496,
+      "call_count": 1,
+      "avg_time": 0.03821730613708496,
+      "min_time": 0.03821730613708496,
+      "max_time": 0.03821730613708496,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "test_system_components": {
+      "section_name": "test_system_components",
+      "total_time": 7.059490203857422,
+      "call_count": 1,
+      "avg_time": 7.059490203857422,
+      "min_time": 7.059490203857422,
+      "max_time": 7.059490203857422,
+      "total_memory": 357.73046875,
+      "avg_memory": 357.73046875,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "inspect_database_content": {
+      "section_name": "inspect_database_content",
+      "total_time": 0.0,
+      "call_count": 1,
+      "avg_time": 0.0,
+      "min_time": 0.0,
+      "max_time": 0.0,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "test_initialization": {
+      "section_name": "test_initialization",
+      "total_time": 1.8641853332519531,
+      "call_count": 1,
+      "avg_time": 1.8641853332519531,
+      "min_time": 1.8641853332519531,
+      "max_time": 1.8641853332519531,
+      "total_memory": 11.24609375,
+      "avg_memory": 11.24609375,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "test_edge_cases": {
+      "section_name": "test_edge_cases",
+      "total_time": 12.48050332069397,
+      "call_count": 1,
+      "avg_time": 12.48050332069397,
+      "min_time": 12.48050332069397,
+      "max_time": 12.48050332069397,
+      "total_memory": 0.04296875,
+      "avg_memory": 0.04296875,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "test_document_processing": {
+      "section_name": "test_document_processing",
+      "total_time": 0.000997304916381836,
+      "call_count": 1,
+      "avg_time": 0.000997304916381836,
+      "min_time": 0.000997304916381836,
+      "max_time": 0.000997304916381836,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    }
+  }
+}
