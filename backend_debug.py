@@ -225,18 +225,37 @@ def test_search_functionality(pipeline):
     print("\n🔍 Testing Search Functionality")
     print("=" * 50)
     
-    # Test queries that cover different document types
-    test_queries = [
-        "Invoice_Outline_-_Sheet1_1.pdf",
-        "invoice outline", 
-        "product_manual",
-        "product manual",
-        "company handbook",
-        "company_handbook.md",
-        "algebra operations",
-        "Math Review",
-        "tmphp713yna_Math_Review_-_Algebra_Operations.pdf"
-    ]
+    # Get actual documents from the system
+    docs_dir = Path("data/documents")
+    actual_docs = []
+    if docs_dir.exists():
+        actual_docs = [f.name for f in docs_dir.iterdir() if f.is_file()]
+    
+    if not actual_docs:
+        print("⚠️ No documents found in data/documents/")
+        return
+    
+    print(f"📁 Found {len(actual_docs)} document(s): {', '.join(actual_docs)}")
+    print()
+    
+    # Build test queries based on actual documents
+    test_queries = []
+    
+    # Add exact filenames
+    for doc in actual_docs:
+        test_queries.append(doc)
+        
+        # Add filename without extension
+        name_without_ext = Path(doc).stem
+        test_queries.append(name_without_ext)
+        
+        # Add filename with spaces instead of underscores
+        name_with_spaces = name_without_ext.replace("_", " ").replace("-", " ")
+        if name_with_spaces != name_without_ext:
+            test_queries.append(name_with_spaces)
+    
+    # Add some generic queries
+    test_queries.extend(["document", "information", "content"])
     
     for query in test_queries:
         print(f"\n📝 Query: '{query}'")
@@ -271,26 +290,33 @@ def test_search_functionality(pipeline):
                     else:
                         print(f"  ⚠️ Content cleaning issue - parts: {len(parts)}")
             
-            # Verify expected document is found
-            expected_variations = [
-                query.lower(),
-                query.lower().replace(" ", "_"),
-                query.lower().replace("-", "_"),
-                query.lower().replace("_", " ")
-            ]
+            # Check if query matches any actual document
+            query_lower = query.lower()
+            is_document_query = any(
+                query_lower == doc.lower() or 
+                query_lower == Path(doc).stem.lower() or
+                query_lower.replace(" ", "_") in doc.lower() or
+                query_lower.replace(" ", "-") in doc.lower()
+                for doc in actual_docs
+            )
             
-            found_match = False
-            if debug_results["results"]:
-                found_source = debug_results["results"][0]["source"].lower()
-                for variation in expected_variations:
-                    if variation in found_source or found_source.replace("_", "").replace("-", "").replace(".", "") in variation.replace("_", "").replace("-", "").replace(".", ""):
-                        found_match = True
-                        break
-            
-            if found_match:
-                print(f"  ✅ Expected document found")
+            if is_document_query and debug_results["results"]:
+                # Check if the top result matches the query
+                top_source = debug_results["results"][0]["source"].lower()
+                found_match = False
+                
+                for doc in actual_docs:
+                    if query_lower in doc.lower() or Path(doc).stem.lower() in query_lower:
+                        if doc.lower() == top_source:
+                            found_match = True
+                            break
+                
+                if found_match:
+                    print(f"  ✅ Correct document found as top result")
+                else:
+                    print(f"  ⚠️ Expected document not in top result")
             else:
-                print(f"  ⚠️ Expected document not in top result")
+                print(f"  ℹ️  Generic query - showing most relevant results")
                 
         except Exception as e:
             print(f"❌ Search error for '{query}': {e}")
@@ -300,14 +326,33 @@ def test_qa_functionality(pipeline):
     print("\n🤖 Testing Q&A Functionality") 
     print("=" * 50)
     
-    # Test different types of questions
-    test_questions = [
-        "What is in the Invoice_Outline_-_Sheet1_1.pdf?",
-        "Tell me about the company handbook",
-        "What does the product manual contain?",
-        "What's in the Math Review document?",
-        "Summarize the algebra operations document"
-    ]
+    # Get actual documents from the system
+    docs_dir = Path("data/documents")
+    actual_docs = []
+    if docs_dir.exists():
+        actual_docs = [f.name for f in docs_dir.iterdir() if f.is_file()]
+    
+    if not actual_docs:
+        print("⚠️ No documents found in data/documents/")
+        return
+    
+    # Build test questions based on actual documents
+    test_questions = []
+    
+    # Add specific questions about each document
+    for doc in actual_docs[:3]:  # Test first 3 documents
+        name = Path(doc).stem.replace("_", " ").replace("-", " ")
+        test_questions.append(f"What is in {doc}?")
+        test_questions.append(f"Tell me about {name}")
+    
+    # Add generic questions
+    test_questions.extend([
+        "What documents are available?",
+        "Summarize the main content"
+    ])
+    
+    # Limit to 5 questions to avoid excessive testing
+    test_questions = test_questions[:5]
     
     for question in test_questions:
         print(f"\n❓ Question: '{question}'")
