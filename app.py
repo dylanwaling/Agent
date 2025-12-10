@@ -10,6 +10,8 @@ from pathlib import Path
 from flask import Flask, request, render_template_string, jsonify, redirect, url_for
 from werkzeug.utils import secure_filename
 import time
+import subprocess
+import sys
 
 # Import our pipeline
 from backend_logic import DocumentPipeline
@@ -426,11 +428,30 @@ if __name__ == '__main__':
     print("🚀 Document Q&A - Flask Web Interface")
     print("=" * 50)
     
+    # Launch live monitoring terminal in a new window
+    try:
+        print("📊 Starting live system monitor...")
+        # Get the directory where app.py is located
+        script_dir = Path(__file__).parent.absolute()
+        monitor_script = script_dir / "backend_live.py"
+        
+        # Launch in a new PowerShell window that stays open
+        subprocess.Popen(
+            ['powershell', '-NoExit', '-Command', 
+             f'python "{monitor_script}"'],
+            creationflags=subprocess.CREATE_NEW_CONSOLE,
+            cwd=str(script_dir)
+        )
+        print("✅ Live monitor launched in separate window")
+    except Exception as e:
+        print(f"⚠️ Failed to launch monitor: {e}")
+        print("   (App will continue without monitor)")
+    
     # Check documents
     docs_dir = Path('data/documents')
     if docs_dir.exists():
         doc_count = len([f for f in docs_dir.iterdir() if f.is_file()])
-        print(f"� Found {doc_count} documents ready for processing")
+        print(f"📄 Found {doc_count} documents ready for processing")
     else:
         print("📂 Documents directory will be created on first upload")
     

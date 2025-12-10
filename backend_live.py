@@ -7,8 +7,10 @@ import os
 import sys
 import time
 import threading
+import json
 from datetime import datetime
 import psutil
+from pathlib import Path
 from backend_logic import DocumentPipeline
 
 # ANSI escape codes for colors and cursor control
@@ -31,6 +33,27 @@ class LiveMonitor:
         self.start_time = time.time()
         self.running = True
         self.lock = threading.Lock()
+        self.status_file = Path("data/pipeline_status.json")
+        self.thinking_start_time = None
+        self.min_thinking_display = 0.5  # Minimum 0.5 seconds to display THINKING
+        self.operation_history = []  # Track recent operations
+        
+    def read_status(self):
+        """Read status from shared file"""
+        try:
+            if self.status_file.exists():
+                with open(self.status_file, 'r') as f:
+                    data = json.load(f)
+                    status = data.get("status", "IDLE")
+                    operation = data.get("operation", "Unknown")
+                    timestamp = data.get("timestamp", 0)
+                    operation_id = data.get("operation_id", "")
+                    return status, operation, timestamp, operation_id
+            else:
+                # File doesn't exist yet
+                return "IDLE", "Waiting for status file...", 0, ""
+        except Exception as e:
+            return "IDLE", f"Error reading status: {str(e)}", 0, ""
         
     def clear_screen(self):
         """Clear the terminal screen"""
@@ -66,14 +89,43 @@ class LiveMonitor:
         
     def display(self):
         """Display the live monitoring interface"""
+        seen_operation_ids = set()
+        displayed_status = "IDLE"
+        force_thinking_until = 0
+        
         while self.running:
             self.clear_screen()
             
-            # Get current metrics
+            # Read status from file
+            status, last_op, timestamp, operation_id = self.read_status()
+            
+            # Track operation count and history based on operation_id changes
             with self.lock:
-                status = self.status
-                last_op = self.last_operation
+                # New THINKING operation detected (check if we haven't seen this operation_id before)
+                if operation_id and operation_id.startswith("THINKING_") and operation_id not in seen_operation_ids:
+                    self.operation_count += 1
+                    seen_operation_ids.add(operation_id)
+                    force_thinking_until = time.time() + self.min_thinking_display
+                    # Add to history (keep last 10)
+                    self.operation_history.append({
+                        "operation": last_op,
+                        "time": datetime.now().strftime('%H:%M:%S'),
+                        "id": operation_id
+                    })
+                    if len(self.operation_history) > 10:
+                        self.operation_history.pop(0)
+                
+                # Force display of THINKING for minimum time
+                current_time = time.time()
+                if current_time < force_thinking_until:
+                    displayed_status = "THINKING"
+                else:
+                    displayed_status = status
+                    
+                self.status = displayed_status
+                self.last_operation = last_op
                 op_count = self.operation_count
+                recent_ops = list(self.operation_history)
                 
             uptime = time.time() - self.start_time
             cpu_percent = psutil.cpu_percent(interval=0.1)
@@ -88,10 +140,25 @@ class LiveMonitor:
             print()
             
             # Process Status (Main feature requested)
-            status_color = Colors.GREEN if status == "IDLE" else Colors.YELLOW
-            print(f"{Colors.BOLD}Process Status:{Colors.RESET} {status_color}{status}{Colors.RESET}")
+            status_color = Colors.GREEN if displayed_status == "IDLE" else Colors.YELLOW
+            print(f"{Colors.BOLD}Process Status:{Colors.RESET} {status_color}{displayed_status}{Colors.RESET}")
             print(f"{Colors.BOLD}Last Operation:{Colors.RESET} {last_op}")
             print(f"{Colors.BOLD}Operations Count:{Colors.RESET} {op_count}")
+            
+            # Show recent operation history
+            if recent_ops:
+                print(f"\n{Colors.BOLD}Recent Operations:{Colors.RESET}")
+                for op in recent_ops[-5:]:  # Show last 5
+                    print(f"  {Colors.GRAY}[{op['time']}] {op['operation']}{Colors.RESET}")
+            
+            # Debug info - ENHANCED
+            status_exists = "✓" if self.status_file.exists() else "✗"
+            print(f"\n{Colors.BOLD}DEBUG INFO:{Colors.RESET}")
+            print(f"{Colors.GRAY}Status File: {status_exists} at {self.status_file}{Colors.RESET}")
+            print(f"{Colors.GRAY}Raw Status: '{status}' | Timestamp: {timestamp:.4f}{Colors.RESET}")
+            print(f"{Colors.GRAY}OpID: {operation_id[:40] if operation_id else 'none'}{Colors.RESET}")
+            print(f"{Colors.GRAY}Displayed: '{displayed_status}' | Force until: {force_thinking_until:.4f} | Now: {current_time:.4f}{Colors.RESET}")
+            print(f"{Colors.GRAY}Seen IDs count: {len(seen_operation_ids)}{Colors.RESET}")
             print()
             
             # System Information
@@ -150,9 +217,9 @@ class LiveMonitor:
             print()
             
             # Footer
-            print(f"{Colors.GRAY}Press Ctrl+C to exit monitoring{Colors.RESET}")
+            print(f"{Colors.GRAY}Press Ctrl+C to exit monitoring | Refresh: 0.15s | Min display: 0.5s{Colors.RESET}")
             
-            time.sleep(1)  # Refresh every second
+            time.sleep(0.15)  # Fast refresh but THINKING forced to display for 0.5s minimum
             
     def _create_bar(self, value, max_value, width=30):
         """Create a text progress bar"""

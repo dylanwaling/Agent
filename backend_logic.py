@@ -6,6 +6,7 @@ Clean document processing pipeline using Docling → LangChain → Search
 
 import os
 import logging
+import json
 from pathlib import Path
 from typing import List, Dict, Any
 
@@ -38,9 +39,57 @@ class DocumentPipeline:
         self.docs_dir.mkdir(parents=True, exist_ok=True)
         self.index_dir.mkdir(parents=True, exist_ok=True)
         
+        # Status file for live monitoring
+        self.status_file = Path("data/pipeline_status.json")
+        self._update_status("IDLE", "System initialized")
+        
         # Initialize components
         self._init_components()
         
+    def _update_status(self, status: str, operation: str):
+        """Update status file for live monitoring - atomic write with proper flushing"""
+        try:
+            import time
+            import tempfile
+            
+            # Create unique operation ID
+            timestamp = time.time()
+            operation_id = f"{status}_{timestamp}"
+            
+            status_data = {
+                "status": status,
+                "operation": operation,
+                "timestamp": timestamp,
+                "operation_id": operation_id
+            }
+            
+            # Ensure directory exists
+            self.status_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            # Write to temp file first, then atomic rename (prevents partial reads)
+            temp_file = self.status_file.parent / f"status_{timestamp}.tmp"
+            
+            with open(temp_file, 'w', encoding='utf-8') as f:
+                json.dump(status_data, f, indent=2)
+                f.flush()
+                os.fsync(f.fileno())
+            
+            # Atomic rename (Windows-safe)
+            try:
+                if self.status_file.exists():
+                    self.status_file.unlink()
+            except:
+                pass
+            temp_file.rename(self.status_file)
+            
+            # Print to console for debugging
+            print(f"[STATUS UPDATE] {status}: {operation[:60]}", flush=True)
+            
+        except Exception as e:
+            logger.error(f"Failed to update status: {e}")
+            import traceback
+            traceback.print_exc()
+    
     def _init_components(self):
         """Initialize processing components"""
         
@@ -129,8 +178,12 @@ Complete Answer:"""
         else:
             logger.info("No existing index found - documents will need to be processed")
         
+        # Set status back to idle after initialization
+        self._update_status("IDLE", "System ready")
+        
     def process_documents(self) -> bool:
         """Process all documents and build index"""
+        self._update_status("THINKING", "Processing documents...")
         try:
             documents = []
             doc_files = list(self.docs_dir.iterdir())
@@ -241,6 +294,7 @@ Complete Answer:"""
                 logger.info(f"Saved index to {index_path}")
                 
                 logger.info("Document processing complete!")
+                self._update_status("IDLE", "Document processing complete")
                 return True
                 
             except Exception as vector_error:
@@ -291,10 +345,12 @@ Complete Answer:"""
     
     def search(self, query: str, score_threshold: float = 1.25) -> List[Dict[str, Any]]:
         """Search documents with relevance-based filtering"""
-        if not self.vectorstore:
-            return []
-            
+        self._update_status("THINKING", f"Searching: {query[:50]}...")
+        
         try:
+            if not self.vectorstore:
+                return []
+                
             # Use similarity search with score threshold for smart retrieval
             docs_with_scores = self.vectorstore.similarity_search_with_score(query, k=100)
             
@@ -350,25 +406,29 @@ Complete Answer:"""
                     "chunk_id": doc.metadata.get("chunk_id", 0),
                     "relevance_score": score
                 })
-                
+            
             return results
             
         except Exception as e:
             logger.error(f"Error searching: {e}")
             return []
+        finally:
+            # Always return to IDLE
+            self._update_status("IDLE", "Search complete")
     
     def ask(self, question: str) -> Dict[str, Any]:
         """Ask a question about the documents using enhanced search logic"""
+        self._update_status("THINKING", f"Answering: {question[:50]}...")
         import time
         start_time = time.time()
         
-        if not self.vectorstore:
-            return {
-                "answer": "No documents processed yet. Please process documents first.",
-                "sources": []
-            }
-            
         try:
+            if not self.vectorstore:
+                return {
+                    "answer": "No documents processed yet. Please process documents first.",
+                    "sources": []
+                }
+            
             # Use our enhanced search method directly (same as debug search)
             logger.info(f"Starting search for: {question}")
             search_start = time.time()
@@ -441,14 +501,19 @@ Complete Answer:"""
                 "answer": f"Error processing question: {e}",
                 "sources": []
             }
+        finally:
+            # Always return to IDLE
+            self._update_status("IDLE", "Answer complete")
+            self._update_status("IDLE", "Answer complete")
 
     def ask_streaming(self, question: str):
         """Same as ask() but yields tokens as they're generated"""
-        if not self.vectorstore:
-            yield "No documents processed yet. Please process documents first."
-            return
-            
+        self._update_status("THINKING", f"Answering (streaming): {question[:40]}...")
         try:
+            if not self.vectorstore:
+                yield "No documents processed yet. Please process documents first."
+                return
+            
             # Use the same search logic as ask()
             search_results = self.search(question)
             if not search_results:
@@ -486,6 +551,9 @@ Complete Answer:"""
                 
         except Exception as e:
             yield f"Error processing question: {e}"
+        finally:
+            # Always return to IDLE after streaming
+            self._update_status("IDLE", "Streaming complete")
 
     def process_single_document(self, file_path: Path) -> bool:
         """Process a single document and add it to existing vectorstore"""
