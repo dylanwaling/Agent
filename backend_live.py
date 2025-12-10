@@ -34,9 +34,11 @@ class LiveMonitor:
         self.running = True
         self.lock = threading.Lock()
         self.status_file = Path("data/pipeline_status.json")
+        self.history_file = Path("data/operation_history.jsonl")
         self.thinking_start_time = None
         self.min_thinking_display = 0.5  # Minimum 0.5 seconds to display THINKING
         self.operation_history = []  # Track recent operations
+        self.last_history_size = 0  # Track file size to detect new operations
         
     def read_status(self):
         """Read status from shared file"""
@@ -87,33 +89,52 @@ class LiveMonitor:
         secs = int(seconds % 60)
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
         
+    def load_operation_history(self):
+        """Load all operations from the history log file"""
+        operations = []
+        try:
+            if self.history_file.exists():
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        if line.strip():
+                            op = json.loads(line)
+                            operations.append(op)
+        except Exception as e:
+            pass
+        return operations
+    
     def display(self):
         """Display the live monitoring interface"""
-        seen_operation_ids = set()
         displayed_status = "IDLE"
         force_thinking_until = 0
         
         while self.running:
             self.clear_screen()
             
-            # Read status from file
+            # Read current status from file
             status, last_op, timestamp, operation_id = self.read_status()
             
-            # Track operation count and history based on operation_id changes
+            # Load operation history from log file
+            all_operations = self.load_operation_history()
+            
             with self.lock:
-                # New THINKING operation detected (check if we haven't seen this operation_id before)
-                if operation_id and operation_id.startswith("THINKING_") and operation_id not in seen_operation_ids:
-                    self.operation_count += 1
-                    seen_operation_ids.add(operation_id)
-                    force_thinking_until = time.time() + self.min_thinking_display
-                    # Add to history (keep last 10)
+                # Update operation count and history from log file
+                self.operation_count = len(all_operations)
+                
+                # Get last 10 operations for display
+                self.operation_history = []
+                for op in all_operations[-10:]:
+                    op_time = datetime.fromtimestamp(op['timestamp']).strftime('%H:%M:%S')
                     self.operation_history.append({
-                        "operation": last_op,
-                        "time": datetime.now().strftime('%H:%M:%S'),
-                        "id": operation_id
+                        "operation": op['operation'],
+                        "time": op_time,
+                        "id": op['operation_id']
                     })
-                    if len(self.operation_history) > 10:
-                        self.operation_history.pop(0)
+                
+                # Check if there's a new operation (force THINKING display)
+                if all_operations and len(all_operations) > self.last_history_size:
+                    force_thinking_until = time.time() + self.min_thinking_display
+                    self.last_history_size = len(all_operations)
                 
                 # Force display of THINKING for minimum time
                 current_time = time.time()
@@ -151,14 +172,15 @@ class LiveMonitor:
                 for op in recent_ops[-5:]:  # Show last 5
                     print(f"  {Colors.GRAY}[{op['time']}] {op['operation']}{Colors.RESET}")
             
-            # Debug info - ENHANCED
+            # Debug info
             status_exists = "✓" if self.status_file.exists() else "✗"
+            history_exists = "✓" if self.history_file.exists() else "✗"
             print(f"\n{Colors.BOLD}DEBUG INFO:{Colors.RESET}")
-            print(f"{Colors.GRAY}Status File: {status_exists} at {self.status_file}{Colors.RESET}")
+            print(f"{Colors.GRAY}Status File: {status_exists} | History File: {history_exists}{Colors.RESET}")
             print(f"{Colors.GRAY}Raw Status: '{status}' | Timestamp: {timestamp:.4f}{Colors.RESET}")
             print(f"{Colors.GRAY}OpID: {operation_id[:40] if operation_id else 'none'}{Colors.RESET}")
             print(f"{Colors.GRAY}Displayed: '{displayed_status}' | Force until: {force_thinking_until:.4f} | Now: {current_time:.4f}{Colors.RESET}")
-            print(f"{Colors.GRAY}Seen IDs count: {len(seen_operation_ids)}{Colors.RESET}")
+            print(f"{Colors.GRAY}Total operations in history file: {self.operation_count}{Colors.RESET}")
             print()
             
             # System Information

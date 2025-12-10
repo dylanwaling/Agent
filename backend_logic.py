@@ -82,6 +82,19 @@ class DocumentPipeline:
                 pass
             temp_file.rename(self.status_file)
             
+            # ALSO append to operation history log (this is what the monitor will read)
+            if status == "THINKING":
+                history_file = self.status_file.parent / "operation_history.jsonl"
+                with open(history_file, 'a', encoding='utf-8') as f:
+                    log_entry = {
+                        "timestamp": timestamp,
+                        "operation": operation,
+                        "operation_id": operation_id
+                    }
+                    f.write(json.dumps(log_entry) + '\n')
+                    f.flush()
+                    os.fsync(f.fileno())
+            
             # Print to console for debugging
             print(f"[STATUS UPDATE] {status}: {operation[:60]}", flush=True)
             
