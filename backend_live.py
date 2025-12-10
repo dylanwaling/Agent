@@ -233,7 +233,7 @@ class LiveMonitorGUI:
                 self.operation_history.append(f"[{op_time}] {op['operation']}")
             self.last_history_size = len(all_operations)
         
-        # Update status
+        # Update status directly - no delays or filtering
         self.status = status
         self.last_operation = last_op
         
@@ -298,6 +298,11 @@ class LiveMonitorGUI:
         uptime = time.time() - self.start_time
         self.uptime_label.config(text=self.format_uptime(uptime))
         self.time_label.config(text=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        
+        # Update status bar with last update time
+        if timestamp > 0:
+            age = time.time() - timestamp
+            self.statusbar.config(text=f"Monitor running | Refresh: 0.15s | Last status: {age:.1f}s ago")
     
     def monitor_loop(self):
         """Background thread that updates the GUI"""
@@ -312,7 +317,7 @@ class LiveMonitorGUI:
             try:
                 # Schedule GUI update on main thread
                 self.root.after(0, self.update_gui)
-                time.sleep(0.5)  # Update every 500ms
+                time.sleep(0.15)  # Update every 150ms for faster response
             except Exception as e:
                 print(f"Monitor loop error: {e}")
                 time.sleep(1)

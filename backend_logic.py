@@ -356,9 +356,10 @@ Complete Answer:"""
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return False
     
-    def search(self, query: str, score_threshold: float = 1.25) -> List[Dict[str, Any]]:
+    def search(self, query: str, score_threshold: float = 1.25, update_status: bool = True) -> List[Dict[str, Any]]:
         """Search documents with relevance-based filtering"""
-        self._update_status("THINKING", f"Searching: {query[:50]}...")
+        if update_status:
+            self._update_status("THINKING", f"Searching: {query[:50]}...")
         
         try:
             if not self.vectorstore:
@@ -426,8 +427,9 @@ Complete Answer:"""
             logger.error(f"Error searching: {e}")
             return []
         finally:
-            # Always return to IDLE
-            self._update_status("IDLE", "Search complete")
+            # Only return to IDLE if we were controlling status
+            if update_status:
+                self._update_status("IDLE", "Search complete")
     
     def ask(self, question: str) -> Dict[str, Any]:
         """Ask a question about the documents using enhanced search logic"""
@@ -445,7 +447,7 @@ Complete Answer:"""
             # Use our enhanced search method directly (same as debug search)
             logger.info(f"Starting search for: {question}")
             search_start = time.time()
-            search_results = self.search(question)
+            search_results = self.search(question, update_status=False)
             search_time = time.time() - search_start
             logger.info(f"Search completed in {search_time:.3f} seconds")
             
@@ -517,7 +519,6 @@ Complete Answer:"""
         finally:
             # Always return to IDLE
             self._update_status("IDLE", "Answer complete")
-            self._update_status("IDLE", "Answer complete")
 
     def ask_streaming(self, question: str):
         """Same as ask() but yields tokens as they're generated"""
@@ -527,8 +528,8 @@ Complete Answer:"""
                 yield "No documents processed yet. Please process documents first."
                 return
             
-            # Use the same search logic as ask()
-            search_results = self.search(question)
+            # Use the same search logic as ask() but don't let it change status
+            search_results = self.search(question, update_status=False)
             if not search_results:
                 yield "No relevant documents found for your question."
                 return
