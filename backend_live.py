@@ -110,36 +110,9 @@ class LiveMonitorGUI:
         self.operations_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         self.operations_text.config(state=tk.DISABLED)
         
-        # System Metrics Section
-        metrics_frame = ttk.LabelFrame(main_frame, text="SYSTEM METRICS", padding="10")
-        metrics_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        metrics_frame.columnconfigure(1, weight=1)
-        
-        ttk.Label(metrics_frame, text="CPU Usage:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
-        self.cpu_label = ttk.Label(metrics_frame, text="0.0%")
-        self.cpu_label.grid(row=0, column=1, sticky=tk.W)
-        
-        self.cpu_progress = ttk.Progressbar(metrics_frame, length=300, mode='determinate')
-        self.cpu_progress.grid(row=0, column=2, padx=(10, 0))
-        
-        ttk.Label(metrics_frame, text="Memory Usage:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
-        self.memory_label = ttk.Label(metrics_frame, text="0.0%")
-        self.memory_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
-        
-        self.memory_progress = ttk.Progressbar(metrics_frame, length=300, mode='determinate')
-        self.memory_progress.grid(row=1, column=2, padx=(10, 0), pady=(5, 0))
-        
-        ttk.Label(metrics_frame, text="Process Memory:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
-        self.process_memory_label = ttk.Label(metrics_frame, text="0.0 MB")
-        self.process_memory_label.grid(row=2, column=1, sticky=tk.W, pady=(5, 0), columnspan=2)
-        
-        ttk.Label(metrics_frame, text="GPU:").grid(row=3, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
-        self.gpu_label = ttk.Label(metrics_frame, text="Checking...")
-        self.gpu_label.grid(row=3, column=1, sticky=tk.W, pady=(5, 0), columnspan=2)
-        
         # Pipeline Status Section
         pipeline_frame = ttk.LabelFrame(main_frame, text="PIPELINE STATUS", padding="10")
-        pipeline_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        pipeline_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         pipeline_frame.columnconfigure(1, weight=1)
         
         ttk.Label(pipeline_frame, text="Index Status:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
@@ -152,7 +125,7 @@ class LiveMonitorGUI:
         
         # Runtime Info Section
         runtime_frame = ttk.LabelFrame(main_frame, text="RUNTIME INFORMATION", padding="10")
-        runtime_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        runtime_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         runtime_frame.columnconfigure(1, weight=1)
         
         ttk.Label(runtime_frame, text="Uptime:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
@@ -166,7 +139,7 @@ class LiveMonitorGUI:
         # Status bar at bottom
         self.statusbar = ttk.Label(main_frame, text="Monitor running | Refresh: 0.5s", 
                                   relief=tk.SUNKEN, anchor=tk.W)
-        self.statusbar.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
+        self.statusbar.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
         
     def read_status(self):
         """Read status from shared file"""
@@ -256,28 +229,6 @@ class LiveMonitorGUI:
         self.operations_text.config(state=tk.DISABLED)
         # Auto-scroll to bottom
         self.operations_text.see(tk.END)
-        
-        # Update system metrics
-        cpu_percent = psutil.cpu_percent(interval=0.1)
-        memory = psutil.virtual_memory()
-        process = psutil.Process()
-        process_memory = process.memory_info().rss / (1024**2)  # MB
-        
-        self.cpu_label.config(text=f"{cpu_percent:.1f}%")
-        self.cpu_progress['value'] = cpu_percent
-        
-        self.memory_label.config(text=f"{memory.percent:.1f}% ({memory.used / (1024**3):.1f}/{memory.total / (1024**3):.1f} GB)")
-        self.memory_progress['value'] = memory.percent
-        
-        self.process_memory_label.config(text=f"{process_memory:.1f} MB")
-        
-        # Update GPU info (less frequently to save resources)
-        if not hasattr(self, '_gpu_update_counter'):
-            self._gpu_update_counter = 0
-        self._gpu_update_counter += 1
-        if self._gpu_update_counter % 10 == 0:  # Update every 10 cycles (5 seconds)
-            gpu_info = self.get_gpu_info()
-            self.gpu_label.config(text=gpu_info)
         
         # Update pipeline status
         index_path = "data/index/faiss_index/index.faiss"
