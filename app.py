@@ -428,21 +428,28 @@ if __name__ == '__main__':
     print("🚀 Document Q&A - Flask Web Interface")
     print("=" * 50)
     
-    # Launch live monitoring terminal in a new window
+    # Launch live monitoring GUI (no console window needed)
     try:
-        print("📊 Starting live system monitor...")
+        print("📊 Starting live system monitor GUI...")
         # Get the directory where app.py is located
         script_dir = Path(__file__).parent.absolute()
         monitor_script = script_dir / "backend_live.py"
         
-        # Launch in a new PowerShell window that stays open
+        # Launch GUI without console window (pythonw.exe for Windows)
+        import sys
+        python_exe = sys.executable
+        # Use pythonw.exe instead of python.exe to hide console
+        if python_exe.endswith('python.exe'):
+            pythonw_exe = python_exe.replace('python.exe', 'pythonw.exe')
+        else:
+            pythonw_exe = python_exe
+        
         subprocess.Popen(
-            ['powershell', '-NoExit', '-Command', 
-             f'python "{monitor_script}"'],
-            creationflags=subprocess.CREATE_NEW_CONSOLE,
-            cwd=str(script_dir)
+            [pythonw_exe, str(monitor_script)],
+            cwd=str(script_dir),
+            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
         )
-        print("✅ Live monitor launched in separate window")
+        print("✅ Live monitor GUI launched")
     except Exception as e:
         print(f"⚠️ Failed to launch monitor: {e}")
         print("   (App will continue without monitor)")
