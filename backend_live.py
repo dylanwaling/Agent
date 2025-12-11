@@ -16,6 +16,10 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext
 from collections import deque
 
+# ============================================================================
+# MAIN GUI CLASS
+# ============================================================================
+
 class LiveMonitorGUI:
     def __init__(self):
         self.pipeline = None
@@ -163,97 +167,10 @@ class LiveMonitorGUI:
                        font=("Consolas", 12))
         msg.grid(row=2, column=0)
     
-    def show_general_info(self):
-        """Show the general info monitor (original view)"""
-        # Clear current container
-        for widget in self.main_container.winfo_children():
-            widget.destroy()
-        
-        self.current_view = "general_info"
-        
-        # Create the original widgets in a new frame
-        self.create_general_info_widgets()
-        
-    def create_general_info_widgets(self):
-        """Create all GUI widgets for General Info view"""
-        # Main container with padding
-        main_frame = ttk.Frame(self.main_container, padding="10")
-        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        self.main_container.columnconfigure(0, weight=1)
-        self.main_container.rowconfigure(0, weight=1)
-        main_frame.columnconfigure(0, weight=1)
-        
-        # Back button
-        back_btn = ttk.Button(main_frame, text="← Back to Menu", command=self.show_menu)
-        back_btn.grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
-        
-        # Title
-        title_label = ttk.Label(main_frame, text="GENERAL INFO - LIVE SYSTEM MONITOR", 
-                               style="Title.TLabel")
-        title_label.grid(row=1, column=0, pady=(0, 15), sticky=tk.W)
-        
-        # Process Status Section
-        status_frame = ttk.LabelFrame(main_frame, text="PROCESS STATUS", padding="10")
-        status_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        status_frame.columnconfigure(1, weight=1)
-        
-        ttk.Label(status_frame, text="Status:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
-        self.status_label = ttk.Label(status_frame, text="IDLE", style="Status.TLabel", foreground="#4ec9b0")
-        self.status_label.grid(row=0, column=1, sticky=tk.W)
-        
-        ttk.Label(status_frame, text="Last Operation:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
-        self.operation_label = ttk.Label(status_frame, text="System started")
-        self.operation_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
-        
-        ttk.Label(status_frame, text="Operations Count:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
-        self.count_label = ttk.Label(status_frame, text="0")
-        self.count_label.grid(row=2, column=1, sticky=tk.W, pady=(5, 0))
-        
-        # Recent Operations Section (Scrollable)
-        ops_frame = ttk.LabelFrame(main_frame, text="RECENT OPERATIONS", padding="10")
-        ops_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
-        ops_frame.columnconfigure(0, weight=1)
-        ops_frame.rowconfigure(0, weight=1)
-        main_frame.rowconfigure(3, weight=1)
-        
-        self.operations_text = scrolledtext.ScrolledText(ops_frame, height=8, width=80, 
-                                                         bg="#252526", fg="#d4d4d4",
-                                                         font=("Consolas", 9), wrap=tk.WORD,
-                                                         relief=tk.FLAT, borderwidth=0)
-        self.operations_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
-        self.operations_text.config(state=tk.DISABLED)
-        
-        # Pipeline Status Section
-        pipeline_frame = ttk.LabelFrame(main_frame, text="PIPELINE STATUS", padding="10")
-        pipeline_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        pipeline_frame.columnconfigure(1, weight=1)
-        
-        ttk.Label(pipeline_frame, text="Index Status:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
-        self.index_label = ttk.Label(pipeline_frame, text="Checking...")
-        self.index_label.grid(row=0, column=1, sticky=tk.W)
-        
-        ttk.Label(pipeline_frame, text="Documents:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
-        self.docs_label = ttk.Label(pipeline_frame, text="Checking...")
-        self.docs_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
-        
-        # Runtime Info Section
-        runtime_frame = ttk.LabelFrame(main_frame, text="RUNTIME INFORMATION", padding="10")
-        runtime_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
-        runtime_frame.columnconfigure(1, weight=1)
-        
-        ttk.Label(runtime_frame, text="Uptime:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
-        self.uptime_label = ttk.Label(runtime_frame, text="00:00:00")
-        self.uptime_label.grid(row=0, column=1, sticky=tk.W)
-        
-        ttk.Label(runtime_frame, text="Current Time:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
-        self.time_label = ttk.Label(runtime_frame, text=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
-        self.time_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
-        
-        # Status bar at bottom
-        self.statusbar = ttk.Label(main_frame, text="Monitor running | Refresh: 0.5s", 
-                                  relief=tk.SUNKEN, anchor=tk.W)
-        self.statusbar.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
-        
+    # ========================================================================
+    # UTILITY METHODS
+    # ========================================================================
+    
     def read_status(self):
         """Read status from shared file"""
         try:
@@ -372,6 +289,10 @@ class LiveMonitorGUI:
             age = time.time() - timestamp
             self.statusbar.config(text=f"Monitor running | Refresh: 0.15s | Last status: {age:.1f}s ago")
     
+    # ========================================================================
+    # BACKGROUND THREAD
+    # ========================================================================
+    
     def monitor_loop(self):
         """Background thread that updates the GUI"""
         # Initialize pipeline in background
@@ -398,7 +319,106 @@ class LiveMonitorGUI:
     def run(self):
         """Start the GUI application"""
         self.root.mainloop()
+    
+    # ========================================================================
+    # MONITOR VIEW: GENERAL INFO
+    # ========================================================================
+    
+    def show_general_info(self):
+        """Show the general info monitor (original view)"""
+        # Clear current container
+        for widget in self.main_container.winfo_children():
+            widget.destroy()
+        
+        self.current_view = "general_info"
+        
+        # Create the original widgets in a new frame
+        self.create_general_info_widgets()
+        
+    def create_general_info_widgets(self):
+        """Create all GUI widgets for General Info view"""
+        # Main container with padding
+        main_frame = ttk.Frame(self.main_container, padding="10")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.main_container.columnconfigure(0, weight=1)
+        self.main_container.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(0, weight=1)
+        
+        # Back button
+        back_btn = ttk.Button(main_frame, text="← Back to Menu", command=self.show_menu)
+        back_btn.grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
+        
+        # Title
+        title_label = ttk.Label(main_frame, text="GENERAL INFO - LIVE SYSTEM MONITOR", 
+                               style="Title.TLabel")
+        title_label.grid(row=1, column=0, pady=(0, 15), sticky=tk.W)
+        
+        # Process Status Section
+        status_frame = ttk.LabelFrame(main_frame, text="PROCESS STATUS", padding="10")
+        status_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        status_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(status_frame, text="Status:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.status_label = ttk.Label(status_frame, text="IDLE", style="Status.TLabel", foreground="#4ec9b0")
+        self.status_label.grid(row=0, column=1, sticky=tk.W)
+        
+        ttk.Label(status_frame, text="Last Operation:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.operation_label = ttk.Label(status_frame, text="System started")
+        self.operation_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
+        
+        ttk.Label(status_frame, text="Operations Count:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.count_label = ttk.Label(status_frame, text="0")
+        self.count_label.grid(row=2, column=1, sticky=tk.W, pady=(5, 0))
+        
+        # Recent Operations Section (Scrollable)
+        ops_frame = ttk.LabelFrame(main_frame, text="RECENT OPERATIONS", padding="10")
+        ops_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        ops_frame.columnconfigure(0, weight=1)
+        ops_frame.rowconfigure(0, weight=1)
+        main_frame.rowconfigure(3, weight=1)
+        
+        self.operations_text = scrolledtext.ScrolledText(ops_frame, height=8, width=80, 
+                                                         bg="#252526", fg="#d4d4d4",
+                                                         font=("Consolas", 9), wrap=tk.WORD,
+                                                         relief=tk.FLAT, borderwidth=0)
+        self.operations_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.operations_text.config(state=tk.DISABLED)
+        
+        # Pipeline Status Section
+        pipeline_frame = ttk.LabelFrame(main_frame, text="PIPELINE STATUS", padding="10")
+        pipeline_frame.grid(row=4, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        pipeline_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(pipeline_frame, text="Index Status:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.index_label = ttk.Label(pipeline_frame, text="Checking...")
+        self.index_label.grid(row=0, column=1, sticky=tk.W)
+        
+        ttk.Label(pipeline_frame, text="Documents:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.docs_label = ttk.Label(pipeline_frame, text="Checking...")
+        self.docs_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
+        
+        # Runtime Info Section
+        runtime_frame = ttk.LabelFrame(main_frame, text="RUNTIME INFORMATION", padding="10")
+        runtime_frame.grid(row=5, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        runtime_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(runtime_frame, text="Uptime:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.uptime_label = ttk.Label(runtime_frame, text="00:00:00")
+        self.uptime_label.grid(row=0, column=1, sticky=tk.W)
+        
+        ttk.Label(runtime_frame, text="Current Time:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.time_label = ttk.Label(runtime_frame, text=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
+        self.time_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
+        
+        # Status bar at bottom
+        self.statusbar = ttk.Label(main_frame, text="Monitor running | Refresh: 0.5s", 
+                                  relief=tk.SUNKEN, anchor=tk.W)
+        self.statusbar.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
 
+
+# ============================================================================
+# ENTRY POINT
+# ============================================================================
 
 if __name__ == "__main__":
     monitor = LiveMonitorGUI()
