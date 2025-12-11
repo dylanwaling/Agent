@@ -105,29 +105,36 @@ class LiveMonitorGUI:
         title = ttk.Label(menu_frame, text="LIVE MONITOR - SELECT VIEW", style="Title.TLabel")
         title.grid(row=0, column=0, columnspan=3, pady=(0, 30))
         
-        # Grid of monitor buttons (3 columns)
+        # Grid of monitor buttons (3 columns) - Data Flow Pipeline
         monitors = [
+            # === SYSTEM OVERVIEW ===
             ("General Info", self.show_general_info),
-            ("Operation 2", lambda: self.show_placeholder("Operation 2")),
-            ("Operation 3", lambda: self.show_placeholder("Operation 3")),
-            ("Operation 4", lambda: self.show_placeholder("Operation 4")),
-            ("Operation 5", lambda: self.show_placeholder("Operation 5")),
-            ("Operation 6", lambda: self.show_placeholder("Operation 6")),
-            ("Operation 7", lambda: self.show_placeholder("Operation 7")),
-            ("Operation 8", lambda: self.show_placeholder("Operation 8")),
-            ("Operation 9", lambda: self.show_placeholder("Operation 9")),
-            ("Operation 10", lambda: self.show_placeholder("Operation 10")),
-            ("Operation 11", lambda: self.show_placeholder("Operation 11")),
-            ("Operation 12", lambda: self.show_placeholder("Operation 12")),
-            ("Operation 13", lambda: self.show_placeholder("Operation 13")),
-            ("Operation 14", lambda: self.show_placeholder("Operation 14")),
-            ("Operation 15", lambda: self.show_placeholder("Operation 15")),
-            ("Operation 16", lambda: self.show_placeholder("Operation 16")),
-            ("Operation 17", lambda: self.show_placeholder("Operation 17")),
-            ("Operation 18", lambda: self.show_placeholder("Operation 18")),
-            ("Operation 19", lambda: self.show_placeholder("Operation 19")),
-            ("Operation 20", lambda: self.show_placeholder("Operation 20")),
-            ("Operation 21", lambda: self.show_placeholder("Operation 21")),
+            
+            # === QUESTION ANSWERING FLOW (in order) ===
+            ("Question Input", lambda: self.show_placeholder("Question Input")),
+            ("Embedding Query", lambda: self.show_placeholder("Embedding Query")),
+            ("FAISS Search", lambda: self.show_placeholder("FAISS Search")),
+            ("Relevance Filter", lambda: self.show_placeholder("Relevance Filter")),
+            ("Context Builder", lambda: self.show_placeholder("Context Builder")),
+            ("Prompt Assembly", lambda: self.show_placeholder("Prompt Assembly")),
+            ("Ollama LLM", lambda: self.show_placeholder("Ollama LLM")),
+            ("Response Stream", lambda: self.show_placeholder("Response Stream")),
+            
+            # === DOCUMENT PROCESSING FLOW (in order) ===
+            ("File Upload", lambda: self.show_placeholder("File Upload")),
+            ("Docling Parser", lambda: self.show_placeholder("Docling Parser")),
+            ("Text Splitter", lambda: self.show_placeholder("Text Splitter")),
+            ("Embedding Gen", lambda: self.show_placeholder("Embedding Gen")),
+            ("FAISS Indexing", lambda: self.show_placeholder("FAISS Indexing")),
+            ("Index Storage", lambda: self.show_placeholder("Index Storage")),
+            
+            # === SYSTEM MONITORING ===
+            ("Status Manager", lambda: self.show_placeholder("Status Manager")),
+            ("Operation History", lambda: self.show_placeholder("Operation History")),
+            ("Error Tracking", lambda: self.show_placeholder("Error Tracking")),
+            ("Performance", lambda: self.show_placeholder("Performance")),
+            ("GPU Monitor", lambda: self.show_placeholder("GPU Monitor")),
+            ("Reserved", lambda: self.show_placeholder("Reserved")),
         ]
         
         row = 1
