@@ -111,8 +111,8 @@ class LiveMonitorGUI:
             ("General Info", self.show_general_info),
             
             # === QUESTION ANSWERING FLOW (in order) ===
-            ("Question Input", lambda: self.show_placeholder("Question Input")),
-            ("Embedding Query", lambda: self.show_placeholder("Embedding Query")),
+            ("Question Input", self.show_question_input),
+            ("Embedding Query", self.show_embedding_query),
             ("FAISS Search", lambda: self.show_placeholder("FAISS Search")),
             ("Relevance Filter", lambda: self.show_placeholder("Relevance Filter")),
             ("Context Builder", lambda: self.show_placeholder("Context Builder")),
@@ -229,10 +229,16 @@ class LiveMonitorGUI:
     
     def update_gui(self):
         """Update all GUI elements with current data"""
-        # Only update if we're in the general info view
-        if self.current_view != "general_info":
-            return
-        
+        # Route to appropriate update method based on current view
+        if self.current_view == "general_info":
+            self.update_general_info()
+        elif self.current_view == "question_input":
+            self.update_question_input()
+        elif self.current_view == "embedding_query":
+            self.update_embedding_query()
+    
+    def update_general_info(self):
+        """Update General Info view"""
         # Read current status
         status, last_op, timestamp, operation_id = self.read_status()
         
@@ -421,6 +427,217 @@ class LiveMonitorGUI:
         self.statusbar = ttk.Label(main_frame, text="Monitor running | Refresh: 0.5s", 
                                   relief=tk.SUNKEN, anchor=tk.W)
         self.statusbar.grid(row=6, column=0, sticky=(tk.W, tk.E), pady=(5, 0))
+
+
+# ============================================================================
+# MONITOR VIEW: QUESTION INPUT
+# ============================================================================
+    
+    def show_question_input(self):
+        """Monitor for incoming questions"""
+        for widget in self.main_container.winfo_children():
+            widget.destroy()
+        
+        self.current_view = "question_input"
+        
+        main_frame = ttk.Frame(self.main_container, padding="10")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.main_container.columnconfigure(0, weight=1)
+        self.main_container.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(0, weight=1)
+        
+        ttk.Button(main_frame, text="← Back to Menu", command=self.show_menu).grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
+        ttk.Label(main_frame, text="QUESTION INPUT MONITOR", style="Title.TLabel").grid(row=1, column=0, pady=(0, 15), sticky=tk.W)
+        
+        # Question Stats
+        stats_frame = ttk.LabelFrame(main_frame, text="QUESTION STATISTICS", padding="10")
+        stats_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        stats_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(stats_frame, text="Total Questions:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.qi_total_label = ttk.Label(stats_frame, text="0")
+        self.qi_total_label.grid(row=0, column=1, sticky=tk.W)
+        
+        ttk.Label(stats_frame, text="Avg Question Length:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.qi_avg_length_label = ttk.Label(stats_frame, text="0 chars")
+        self.qi_avg_length_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
+        
+        ttk.Label(stats_frame, text="Last Question:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.qi_last_label = ttk.Label(stats_frame, text="N/A")
+        self.qi_last_label.grid(row=2, column=1, sticky=tk.W, pady=(5, 0))
+        
+        # Recent Questions
+        questions_frame = ttk.LabelFrame(main_frame, text="RECENT QUESTIONS", padding="10")
+        questions_frame.grid(row=3, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        questions_frame.columnconfigure(0, weight=1)
+        questions_frame.rowconfigure(0, weight=1)
+        main_frame.rowconfigure(3, weight=1)
+        
+        self.qi_questions_text = scrolledtext.ScrolledText(questions_frame, height=15, width=80,
+                                                          bg="#252526", fg="#d4d4d4",
+                                                          font=("Consolas", 9), wrap=tk.WORD,
+                                                          relief=tk.FLAT, borderwidth=0)
+        self.qi_questions_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.qi_questions_text.config(state=tk.DISABLED)
+
+
+# ============================================================================
+# MONITOR VIEW: EMBEDDING QUERY
+# ============================================================================
+    
+    def show_embedding_query(self):
+        """Monitor for query embedding process"""
+        for widget in self.main_container.winfo_children():
+            widget.destroy()
+        
+        self.current_view = "embedding_query"
+        
+        main_frame = ttk.Frame(self.main_container, padding="10")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.main_container.columnconfigure(0, weight=1)
+        self.main_container.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(0, weight=1)
+        
+        ttk.Button(main_frame, text="← Back to Menu", command=self.show_menu).grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
+        ttk.Label(main_frame, text="EMBEDDING QUERY MONITOR", style="Title.TLabel").grid(row=1, column=0, pady=(0, 15), sticky=tk.W)
+        
+        # Model Info
+        model_frame = ttk.LabelFrame(main_frame, text="EMBEDDING MODEL", padding="10")
+        model_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        model_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(model_frame, text="Model:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.eq_model_label = ttk.Label(model_frame, text="sentence-transformers/all-MiniLM-L6-v2")
+        self.eq_model_label.grid(row=0, column=1, sticky=tk.W)
+        
+        ttk.Label(model_frame, text="Vector Dimension:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.eq_dim_label = ttk.Label(model_frame, text="384")
+        self.eq_dim_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
+        
+        ttk.Label(model_frame, text="Device:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.eq_device_label = ttk.Label(model_frame, text="Checking...")
+        self.eq_device_label.grid(row=2, column=1, sticky=tk.W, pady=(5, 0))
+        
+        # Embedding Stats
+        stats_frame = ttk.LabelFrame(main_frame, text="EMBEDDING STATISTICS", padding="10")
+        stats_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        stats_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(stats_frame, text="Total Embeddings:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.eq_total_label = ttk.Label(stats_frame, text="0")
+        self.eq_total_label.grid(row=0, column=1, sticky=tk.W)
+        
+        ttk.Label(stats_frame, text="Avg Time:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.eq_avg_time_label = ttk.Label(stats_frame, text="0.000s")
+        self.eq_avg_time_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
+        
+        # Recent Embeddings
+        recent_frame = ttk.LabelFrame(main_frame, text="RECENT EMBEDDING OPERATIONS", padding="10")
+        recent_frame.grid(row=4, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        recent_frame.columnconfigure(0, weight=1)
+        recent_frame.rowconfigure(0, weight=1)
+        main_frame.rowconfigure(4, weight=1)
+        
+        self.eq_recent_text = scrolledtext.ScrolledText(recent_frame, height=10, width=80,
+                                                       bg="#252526", fg="#d4d4d4",
+                                                       font=("Consolas", 9), wrap=tk.WORD,
+                                                       relief=tk.FLAT, borderwidth=0)
+        self.eq_recent_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.eq_recent_text.config(state=tk.DISABLED)
+    
+    def update_question_input(self):
+        """Update Question Input monitor with real data"""
+        # Load operation history
+        all_operations = self.load_operation_history()
+        
+        # Filter for question/search operations
+        questions = []
+        total_length = 0
+        for op in all_operations:
+            op_text = op.get('operation', '')
+            if 'Searching:' in op_text or 'Answering' in op_text:
+                # Extract question text
+                if 'Searching:' in op_text:
+                    question = op_text.replace('Searching:', '').strip()
+                elif 'Answering (streaming):' in op_text:
+                    question = op_text.replace('Answering (streaming):', '').strip()
+                else:
+                    question = op_text.replace('Answering:', '').strip()
+                
+                if question and len(question) > 3:
+                    timestamp = op.get('timestamp', 0)
+                    time_str = datetime.fromtimestamp(timestamp).strftime('%H:%M:%S')
+                    questions.append({
+                        'question': question,
+                        'time': time_str,
+                        'length': len(question)
+                    })
+                    total_length += len(question)
+        
+        # Update stats
+        self.qi_total_label.config(text=str(len(questions)))
+        
+        if questions:
+            avg_length = total_length / len(questions)
+            self.qi_avg_length_label.config(text=f"{avg_length:.0f} chars")
+            self.qi_last_label.config(text=questions[-1]['question'][:60] + "..." if len(questions[-1]['question']) > 60 else questions[-1]['question'])
+        else:
+            self.qi_avg_length_label.config(text="0 chars")
+            self.qi_last_label.config(text="N/A")
+        
+        # Update recent questions list
+        self.qi_questions_text.config(state=tk.NORMAL)
+        self.qi_questions_text.delete(1.0, tk.END)
+        for q in questions[-20:]:  # Show last 20
+            self.qi_questions_text.insert(tk.END, f"[{q['time']}] ({q['length']} chars)\n")
+            self.qi_questions_text.insert(tk.END, f"  {q['question']}\n\n")
+        self.qi_questions_text.config(state=tk.DISABLED)
+        self.qi_questions_text.see(tk.END)
+    
+    def update_embedding_query(self):
+        """Update Embedding Query monitor with real data"""
+        # Load operation history
+        all_operations = self.load_operation_history()
+        
+        # Filter for embedding operations
+        embeddings = []
+        total_time = 0
+        for op in all_operations:
+            op_text = op.get('operation', '')
+            if 'Searching:' in op_text or 'Answering' in op_text:
+                timestamp = op.get('timestamp', 0)
+                time_str = datetime.fromtimestamp(timestamp).strftime('%H:%M:%S')
+                embeddings.append({
+                    'operation': op_text[:60] + "..." if len(op_text) > 60 else op_text,
+                    'time': time_str
+                })
+        
+        # Update stats
+        self.eq_total_label.config(text=str(len(embeddings)))
+        
+        # For now, estimated time (we can add real timing later)
+        if len(embeddings) > 0:
+            self.eq_avg_time_label.config(text="~0.050s")
+        else:
+            self.eq_avg_time_label.config(text="0.000s")
+        
+        # Check device
+        try:
+            import torch
+            if torch.cuda.is_available():
+                self.eq_device_label.config(text="CUDA (GPU)", foreground="#4ec9b0")
+            else:
+                self.eq_device_label.config(text="CPU", foreground="#dcdcaa")
+        except:
+            self.eq_device_label.config(text="CPU", foreground="#dcdcaa")
+        
+        # Update recent embeddings list
+        self.eq_recent_text.config(state=tk.NORMAL)
+        self.eq_recent_text.delete(1.0, tk.END)
+        for emb in embeddings[-15:]:  # Show last 15
+            self.eq_recent_text.insert(tk.END, f"[{emb['time']}] {emb['operation']}\n")
+        self.eq_recent_text.config(state=tk.DISABLED)
+        self.eq_recent_text.see(tk.END)
 
 
 # ============================================================================
