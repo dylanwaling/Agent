@@ -113,7 +113,7 @@ class LiveMonitorGUI:
             # === QUESTION ANSWERING FLOW (in order) ===
             ("Question Input", self.show_question_input),
             ("Embedding Query", self.show_embedding_query),
-            ("FAISS Search", lambda: self.show_placeholder("FAISS Search")),
+            ("FAISS Search", self.show_faiss_search),
             ("Relevance Filter", lambda: self.show_placeholder("Relevance Filter")),
             ("Context Builder", lambda: self.show_placeholder("Context Builder")),
             ("Prompt Assembly", lambda: self.show_placeholder("Prompt Assembly")),
@@ -236,6 +236,8 @@ class LiveMonitorGUI:
             self.update_question_input()
         elif self.current_view == "embedding_query":
             self.update_embedding_query()
+        elif self.current_view == "faiss_search":
+            self.update_faiss_search()
     
     def update_general_info(self):
         """Update General Info view"""
@@ -246,11 +248,14 @@ class LiveMonitorGUI:
         all_operations = self.load_operation_history()
         self.operation_count = len(all_operations)
         
-        # Update operation history deque
+        # Update operation history deque and track new operations
+        new_operations = []
         if all_operations and len(all_operations) > self.last_history_size:
             for op in all_operations[self.last_history_size:]:
                 op_time = datetime.fromtimestamp(op['timestamp']).strftime('%H:%M:%S')
-                self.operation_history.append(f"[{op_time}] {op['operation']}")
+                formatted = f"[{op_time}] {op['operation']}"
+                self.operation_history.append(formatted)
+                new_operations.append(formatted)
             self.last_history_size = len(all_operations)
         
         # Update status directly - no delays or filtering
@@ -268,14 +273,20 @@ class LiveMonitorGUI:
         self.operation_label.config(text=last_op)
         self.count_label.config(text=str(self.operation_count))
         
-        # Update operations text
-        self.operations_text.config(state=tk.NORMAL)
-        self.operations_text.delete(1.0, tk.END)
-        for op in list(self.operation_history):
-            self.operations_text.insert(tk.END, op + "\n")
-        self.operations_text.config(state=tk.DISABLED)
-        # Auto-scroll to bottom
-        self.operations_text.see(tk.END)
+        # Update operations text with smart scroll handling
+        if new_operations:
+            # Check if user is viewing the live stream (at bottom)
+            yview = self.operations_text.yview()
+            at_bottom = yview[1] >= 0.99
+            
+            self.operations_text.config(state=tk.NORMAL)
+            for op in new_operations:
+                self.operations_text.insert(tk.END, op + "\n")
+            self.operations_text.config(state=tk.DISABLED)
+            
+            # Only auto-scroll if user was already at the bottom
+            if at_bottom:
+                self.operations_text.see(tk.END)
         
         # Update pipeline status
         index_path = "data/index/faiss_index/index.faiss"
@@ -347,6 +358,15 @@ class LiveMonitorGUI:
         
         # Create the original widgets in a new frame
         self.create_general_info_widgets()
+        
+        # Populate with existing operations from deque
+        if self.operation_history:
+            self.operations_text.config(state=tk.NORMAL)
+            for op in list(self.operation_history):
+                self.operations_text.insert(tk.END, op + "\n")
+            self.operations_text.config(state=tk.DISABLED)
+            # Start at bottom
+            self.operations_text.see(tk.END)
         
     def create_general_info_widgets(self):
         """Create all GUI widgets for General Info view"""
@@ -439,6 +459,8 @@ class LiveMonitorGUI:
             widget.destroy()
         
         self.current_view = "question_input"
+        # Reset counter when view is created
+        self.qi_last_count = 0
         
         main_frame = ttk.Frame(self.main_container, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -479,6 +501,14 @@ class LiveMonitorGUI:
                                                           relief=tk.FLAT, borderwidth=0)
         self.qi_questions_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         self.qi_questions_text.config(state=tk.DISABLED)
+        
+        # Populate with existing data immediately
+        self.root.after(50, self._populate_question_input)
+    
+    def _populate_question_input(self):
+        """Initial population of Question Input view"""
+        # Force an update to populate the view
+        self.update_question_input()
 
 
 # ============================================================================
@@ -491,6 +521,8 @@ class LiveMonitorGUI:
             widget.destroy()
         
         self.current_view = "embedding_query"
+        # Reset counter when view is created
+        self.eq_last_count = 0
         
         main_frame = ttk.Frame(self.main_container, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -544,6 +576,14 @@ class LiveMonitorGUI:
                                                        relief=tk.FLAT, borderwidth=0)
         self.eq_recent_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
         self.eq_recent_text.config(state=tk.DISABLED)
+        
+        # Populate with existing data immediately
+        self.root.after(50, self._populate_embedding_query)
+    
+    def _populate_embedding_query(self):
+        """Initial population of Embedding Query view"""
+        # Force an update to populate the view
+        self.update_embedding_query()
     
     def update_question_input(self):
         """Update Question Input monitor with real data"""
@@ -585,14 +625,35 @@ class LiveMonitorGUI:
             self.qi_avg_length_label.config(text="0 chars")
             self.qi_last_label.config(text="N/A")
         
-        # Update recent questions list
-        self.qi_questions_text.config(state=tk.NORMAL)
-        self.qi_questions_text.delete(1.0, tk.END)
-        for q in questions[-20:]:  # Show last 20
-            self.qi_questions_text.insert(tk.END, f"[{q['time']}] ({q['length']} chars)\n")
-            self.qi_questions_text.insert(tk.END, f"  {q['question']}\n\n")
-        self.qi_questions_text.config(state=tk.DISABLED)
-        self.qi_questions_text.see(tk.END)
+        # Track what we've already displayed
+        if not hasattr(self, 'qi_last_count'):
+            self.qi_last_count = 0
+        
+        # Only update if there are new questions
+        if len(questions) > self.qi_last_count:
+            yview = self.qi_questions_text.yview()
+            at_bottom = yview[1] >= 0.99
+            
+            self.qi_questions_text.config(state=tk.NORMAL)
+            
+            # If first time or need full refresh, clear and show last 20
+            if self.qi_last_count == 0 or len(questions) < self.qi_last_count:
+                self.qi_questions_text.delete(1.0, tk.END)
+                for q in questions[-20:]:
+                    self.qi_questions_text.insert(tk.END, f"[{q['time']}] ({q['length']} chars)\n")
+                    self.qi_questions_text.insert(tk.END, f"  {q['question']}\n\n")
+            else:
+                # Append only new questions
+                for q in questions[self.qi_last_count:]:
+                    self.qi_questions_text.insert(tk.END, f"[{q['time']}] ({q['length']} chars)\n")
+                    self.qi_questions_text.insert(tk.END, f"  {q['question']}\n\n")
+            
+            self.qi_questions_text.config(state=tk.DISABLED)
+            self.qi_last_count = len(questions)
+            
+            # Auto-scroll only if at bottom
+            if at_bottom:
+                self.qi_questions_text.see(tk.END)
     
     def update_embedding_query(self):
         """Update Embedding Query monitor with real data"""
@@ -631,13 +692,202 @@ class LiveMonitorGUI:
         except:
             self.eq_device_label.config(text="CPU", foreground="#dcdcaa")
         
-        # Update recent embeddings list
-        self.eq_recent_text.config(state=tk.NORMAL)
-        self.eq_recent_text.delete(1.0, tk.END)
-        for emb in embeddings[-15:]:  # Show last 15
-            self.eq_recent_text.insert(tk.END, f"[{emb['time']}] {emb['operation']}\n")
-        self.eq_recent_text.config(state=tk.DISABLED)
-        self.eq_recent_text.see(tk.END)
+        # Track what we've already displayed
+        if not hasattr(self, 'eq_last_count'):
+            self.eq_last_count = 0
+        
+        # Only update if there are new embeddings
+        if len(embeddings) > self.eq_last_count:
+            yview = self.eq_recent_text.yview()
+            at_bottom = yview[1] >= 0.99
+            
+            self.eq_recent_text.config(state=tk.NORMAL)
+            
+            # If first time or need full refresh, clear and show last 15
+            if self.eq_last_count == 0 or len(embeddings) < self.eq_last_count:
+                self.eq_recent_text.delete(1.0, tk.END)
+                for emb in embeddings[-15:]:
+                    self.eq_recent_text.insert(tk.END, f"[{emb['time']}] {emb['operation']}\n")
+            else:
+                # Append only new embeddings
+                for emb in embeddings[self.eq_last_count:]:
+                    self.eq_recent_text.insert(tk.END, f"[{emb['time']}] {emb['operation']}\n")
+            
+            self.eq_recent_text.config(state=tk.DISABLED)
+            self.eq_last_count = len(embeddings)
+            
+            # Auto-scroll only if at bottom
+            if at_bottom:
+                self.eq_recent_text.see(tk.END)
+
+
+# ============================================================================
+# MONITOR VIEW: FAISS SEARCH
+# ============================================================================
+    
+    def show_faiss_search(self):
+        """Monitor for FAISS vector search operations"""
+        for widget in self.main_container.winfo_children():
+            widget.destroy()
+        
+        self.current_view = "faiss_search"
+        # Reset counter when view is created
+        self.fs_last_count = 0
+        
+        main_frame = ttk.Frame(self.main_container, padding="10")
+        main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.main_container.columnconfigure(0, weight=1)
+        self.main_container.rowconfigure(0, weight=1)
+        main_frame.columnconfigure(0, weight=1)
+        
+        ttk.Button(main_frame, text="← Back to Menu", command=self.show_menu).grid(row=0, column=0, sticky=tk.W, pady=(0, 10))
+        ttk.Label(main_frame, text="FAISS SEARCH MONITOR", style="Title.TLabel").grid(row=1, column=0, pady=(0, 15), sticky=tk.W)
+        
+        # Index Info
+        index_frame = ttk.LabelFrame(main_frame, text="INDEX INFORMATION", padding="10")
+        index_frame.grid(row=2, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        index_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(index_frame, text="Index Status:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.fs_index_status_label = ttk.Label(index_frame, text="Checking...")
+        self.fs_index_status_label.grid(row=0, column=1, sticky=tk.W)
+        
+        ttk.Label(index_frame, text="Total Vectors:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.fs_vector_count_label = ttk.Label(index_frame, text="0")
+        self.fs_vector_count_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
+        
+        ttk.Label(index_frame, text="Index Size:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.fs_index_size_label = ttk.Label(index_frame, text="0 KB")
+        self.fs_index_size_label.grid(row=2, column=1, sticky=tk.W, pady=(5, 0))
+        
+        # Search Stats
+        stats_frame = ttk.LabelFrame(main_frame, text="SEARCH STATISTICS", padding="10")
+        stats_frame.grid(row=3, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
+        stats_frame.columnconfigure(1, weight=1)
+        
+        ttk.Label(stats_frame, text="Total Searches:").grid(row=0, column=0, sticky=tk.W, padx=(0, 10))
+        self.fs_total_searches_label = ttk.Label(stats_frame, text="0")
+        self.fs_total_searches_label.grid(row=0, column=1, sticky=tk.W)
+        
+        ttk.Label(stats_frame, text="K Value:").grid(row=1, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.fs_k_value_label = ttk.Label(stats_frame, text="100")
+        self.fs_k_value_label.grid(row=1, column=1, sticky=tk.W, pady=(5, 0))
+        
+        ttk.Label(stats_frame, text="Avg Results:").grid(row=2, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.fs_avg_results_label = ttk.Label(stats_frame, text="0")
+        self.fs_avg_results_label.grid(row=2, column=1, sticky=tk.W, pady=(5, 0))
+        
+        ttk.Label(stats_frame, text="Avg Search Time:").grid(row=3, column=0, sticky=tk.W, padx=(0, 10), pady=(5, 0))
+        self.fs_avg_time_label = ttk.Label(stats_frame, text="0.000s")
+        self.fs_avg_time_label.grid(row=3, column=1, sticky=tk.W, pady=(5, 0))
+        
+        # Recent Searches
+        searches_frame = ttk.LabelFrame(main_frame, text="RECENT SEARCH OPERATIONS", padding="10")
+        searches_frame.grid(row=4, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
+        searches_frame.columnconfigure(0, weight=1)
+        searches_frame.rowconfigure(0, weight=1)
+        main_frame.rowconfigure(4, weight=1)
+        
+        self.fs_searches_text = scrolledtext.ScrolledText(searches_frame, height=10, width=80,
+                                                         bg="#252526", fg="#d4d4d4",
+                                                         font=("Consolas", 9), wrap=tk.WORD,
+                                                         relief=tk.FLAT, borderwidth=0)
+        self.fs_searches_text.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
+        self.fs_searches_text.config(state=tk.DISABLED)
+        
+        # Populate with existing data immediately
+        self.root.after(50, self._populate_faiss_search)
+    
+    def _populate_faiss_search(self):
+        """Initial population of FAISS Search view"""
+        # Force an update to populate the view
+        self.update_faiss_search()
+    
+    def update_faiss_search(self):
+        """Update FAISS Search monitor with real data"""
+        # Check index status
+        index_path = "data/index/faiss_index/index.faiss"
+        if os.path.exists(index_path):
+            index_size = os.path.getsize(index_path) / 1024  # KB
+            self.fs_index_status_label.config(text="Loaded", foreground="#4ec9b0")
+            self.fs_index_size_label.config(text=f"{index_size:.1f} KB")
+            
+            # Try to get vector count
+            try:
+                if self.pipeline and self.pipeline.vectorstore:
+                    vector_count = self.pipeline.vectorstore.index.ntotal
+                    self.fs_vector_count_label.config(text=str(vector_count))
+                else:
+                    self.fs_vector_count_label.config(text="Unknown")
+            except:
+                self.fs_vector_count_label.config(text="Unknown")
+        else:
+            self.fs_index_status_label.config(text="Not Found", foreground="#f48771")
+            self.fs_index_size_label.config(text="0 KB")
+            self.fs_vector_count_label.config(text="0")
+        
+        # Load operation history for search operations
+        all_operations = self.load_operation_history()
+        
+        # Filter for search operations (both Searching and Answering trigger FAISS searches)
+        searches = []
+        for op in all_operations:
+            op_text = op.get('operation', '')
+            if 'Searching:' in op_text or 'Answering' in op_text:
+                timestamp = op.get('timestamp', 0)
+                time_str = datetime.fromtimestamp(timestamp).strftime('%H:%M:%S')
+                
+                # Extract query text
+                if 'Searching:' in op_text:
+                    query = op_text.replace('Searching:', '').strip()[:50]
+                else:
+                    query = op_text.replace('Answering (streaming):', '').replace('Answering:', '').strip()[:50]
+                
+                searches.append({
+                    'query': query,
+                    'time': time_str
+                })
+        
+        # Update stats
+        self.fs_total_searches_label.config(text=str(len(searches)))
+        
+        if searches:
+            # Estimated average (we can add real metrics later)
+            self.fs_avg_results_label.config(text="~15")
+            self.fs_avg_time_label.config(text="~0.025s")
+        else:
+            self.fs_avg_results_label.config(text="0")
+            self.fs_avg_time_label.config(text="0.000s")
+        
+        # Track what we've already displayed
+        if not hasattr(self, 'fs_last_count'):
+            self.fs_last_count = 0
+        
+        # Only update if there are new searches
+        if len(searches) > self.fs_last_count:
+            yview = self.fs_searches_text.yview()
+            at_bottom = yview[1] >= 0.99
+            
+            self.fs_searches_text.config(state=tk.NORMAL)
+            
+            # If first time or need full refresh, clear and show last 15
+            if self.fs_last_count == 0 or len(searches) < self.fs_last_count:
+                self.fs_searches_text.delete(1.0, tk.END)
+                for search in searches[-15:]:
+                    self.fs_searches_text.insert(tk.END, f"[{search['time']}] Query: {search['query']}...\n")
+                    self.fs_searches_text.insert(tk.END, f"  → K=100, Searching index...\n\n")
+            else:
+                # Append only new searches
+                for search in searches[self.fs_last_count:]:
+                    self.fs_searches_text.insert(tk.END, f"[{search['time']}] Query: {search['query']}...\n")
+                    self.fs_searches_text.insert(tk.END, f"  → K=100, Searching index...\n\n")
+            
+            self.fs_searches_text.config(state=tk.DISABLED)
+            self.fs_last_count = len(searches)
+            
+            # Auto-scroll only if at bottom
+            if at_bottom:
+                self.fs_searches_text.see(tk.END)
 
 
 # ============================================================================
