@@ -1,11 +1,11 @@
 {
   "status": "IDLE",
   "operation": "Stream complete for: whats in company_handbook",
-  "timestamp": 1765505789.123969,
-  "operation_id": "IDLE_1765505789.123969",
+  "timestamp": 1765509110.5872333,
+  "operation_id": "IDLE_1765509110.5872333",
   "metadata": {
     "question": "whats in company_handbook",
-    "stream_time_s": 3.995,
-    "token_count": 531
+    "stream_time_s": 2.002,
+    "token_count": 209
   }
 }

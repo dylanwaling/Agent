@@ -3,49 +3,90 @@ Live System Monitoring for Document Q&A Agent - GUI Version
 Task-manager-style real-time display with scrollable window interface
 """
 
+# ============================================================================
+# CONSTANTS & IMPORTS
+# ============================================================================
+
+# Standard library imports
 import os
 import sys
 import time
-import threading
 import json
 import logging
+import threading
 from datetime import datetime
-import psutil
 from pathlib import Path
-from backend_logic import DocumentPipeline
-import tkinter as tk
-from tkinter import ttk, scrolledtext
 from collections import deque
 from queue import Queue
 
-# Setup logging
+# Third-party imports
+import psutil
+import tkinter as tk
+from tkinter import ttk, scrolledtext
+
+# Local imports
+from backend_logic import DocumentPipeline
+
+# Logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+# File paths
+STATUS_FILE = Path("data/pipeline_status.json")
+HISTORY_FILE = Path("data/operation_history.jsonl")
+INDEX_PATH = "data/index/faiss_index/index.faiss"
+DOCS_PATH = "data/documents"
+
+# UI Configuration
+MAX_OPERATIONS_DISPLAY = 50
+QUEUE_PROCESS_INTERVAL_MS = 50
+STATUS_UPDATE_INTERVAL_MS = 1000
+
+
 # ============================================================================
-# EVENT SYSTEM - Push-based data delivery
+# DATA MODELS & CLASSES
 # ============================================================================
 
 class OperationEventBus:
-    """Thread-safe event bus for pushing operations to monitors in real-time"""
+    """
+    Thread-safe event bus for pushing operations to monitors in real-time.
+    
+    Provides publish-subscribe pattern for operation events across the application.
+    """
     
     def __init__(self):
+        """Initialize the event bus with empty subscriber list and thread lock."""
         self.subscribers = []
         self.lock = threading.Lock()
     
     def subscribe(self, callback):
-        """Subscribe to operation events"""
+        """
+        Subscribe to operation events.
+        
+        Args:
+            callback: Function to call when operations are published
+        """
         with self.lock:
             self.subscribers.append(callback)
     
     def unsubscribe(self, callback):
-        """Unsubscribe from operation events"""
+        """
+        Unsubscribe from operation events.
+        
+        Args:
+            callback: Function to remove from subscribers
+        """
         with self.lock:
             if callback in self.subscribers:
                 self.subscribers.remove(callback)
     
     def publish(self, operation_data):
-        """Publish operation to all subscribers (called from backend thread)"""
+        """
+        Publish operation to all subscribers (called from backend thread).
+        
+        Args:
+            operation_data: Dictionary containing operation information
+        """
         with self.lock:
             for callback in self.subscribers[:]:  # Copy to avoid modification during iteration
                 try:
@@ -53,15 +94,18 @@ class OperationEventBus:
                 except Exception as e:
                     logger.error(f"Error in subscriber callback: {e}")
 
+
 # Global event bus instance
 event_bus = OperationEventBus()
 
-# ============================================================================
-# BASE MONITOR CLASS - Reusable for all monitor views
-# ============================================================================
 
 class BaseMonitor:
-    """Base class for all monitor views with common functionality"""
+    """
+    Base class for all monitor views with common functionality.
+    
+    Provides reusable UI components and data management for monitor screens.
+    Subclasses should override show() and on_new_operation() methods.
+    """
     
     def __init__(self, parent, gui_instance):
         self.parent = parent
@@ -81,21 +125,45 @@ class BaseMonitor:
         return self.main_frame
     
     def add_back_button(self, row=0):
-        """Add back to menu button"""
+        """
+        Add back to menu button.
+        
+        Args:
+            row: Grid row position for the button
+            
+        Returns:
+            Next available row number
+        """
         btn = ttk.Button(self.main_frame, text="← Back to Menu", command=self.gui.show_menu)
         btn.grid(row=row, column=0, sticky=tk.W, pady=(0, 10))
         return row + 1
     
     def add_title(self, title_text, row=1):
-        """Add title label"""
+        """
+        Add title label to the monitor.
+        
+        Args:
+            title_text: Title text to display
+            row: Grid row position
+            
+        Returns:
+            Next available row number
+        """
         title = ttk.Label(self.main_frame, text=title_text, style="Title.TLabel")
         title.grid(row=row, column=0, pady=(0, 15), sticky=tk.W)
         return row + 1
     
     def add_stat_frame(self, title, stats_config, row):
         """
-        Add a statistics frame with labels
-        stats_config: list of tuples [(label_text, widget_key, default_value), ...]
+        Add a statistics frame with labels.
+        
+        Args:
+            title: Frame title
+            stats_config: List of tuples [(label_text, widget_key, default_value), ...]
+            row: Grid row position
+            
+        Returns:
+            Next available row number
         """
         frame = ttk.LabelFrame(self.main_frame, text=title, padding="10")
         frame.grid(row=row, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
@@ -110,7 +178,17 @@ class BaseMonitor:
         return row + 1
     
     def add_scrollable_text(self, title, height, row):
-        """Add a scrollable text widget"""
+        """
+        Add a scrollable text widget.
+        
+        Args:
+            title: Frame title
+            height: Text widget height in lines
+            row: Grid row position
+            
+        Returns:
+            Tuple of (text_widget, next_row)
+        """
         frame = ttk.LabelFrame(self.main_frame, text=title, padding="10")
         frame.grid(row=row, column=0, sticky=(tk.W, tk.E, tk.N, tk.S), pady=(0, 10))
         frame.columnconfigure(0, weight=1)
@@ -127,7 +205,14 @@ class BaseMonitor:
         return text_widget, row + 1
     
     def update_text_widget(self, text_widget, new_lines, auto_scroll=True):
-        """Smart update for scrollable text widgets"""
+        """
+        Smart update for scrollable text widgets with auto-scroll.
+        
+        Args:
+            text_widget: The text widget to update
+            new_lines: List of text lines to append
+            auto_scroll: Whether to auto-scroll if at bottom
+        """
         yview = text_widget.yview()
         at_bottom = yview[1] >= 0.99
         
@@ -140,7 +225,16 @@ class BaseMonitor:
             text_widget.see(tk.END)
     
     def filter_operations(self, operations, keywords):
-        """Filter operations by keywords"""
+        """
+        Filter operations by keywords.
+        
+        Args:
+            operations: List of operation dictionaries
+            keywords: List of keywords to filter by
+            
+        Returns:
+            Filtered list of operations
+        """
         filtered = []
         for op in operations:
             op_text = op.get('operation', '')
@@ -149,7 +243,11 @@ class BaseMonitor:
         return filtered
     
     def _schedule_scroll_to_bottom(self):
-        """Schedule multiple scroll attempts to ensure text widget starts at bottom"""
+        """
+        Schedule multiple scroll attempts to ensure text widget starts at bottom.
+        
+        Uses multiple delayed attempts to handle timing issues with widget rendering.
+        """
         def scroll():
             try:
                 self.text_widget.update_idletasks()
@@ -163,7 +261,13 @@ class BaseMonitor:
             self.gui.root.after(delay, scroll)
     
     def _add_item_to_display(self, item, format_func):
-        """Add single item to display (event-driven)"""
+        """
+        Add single item to display (event-driven).
+        
+        Args:
+            item: Data item to display
+            format_func: Function to format item into display lines
+        """
         if not hasattr(self, 'text_widget'):
             return
         
@@ -185,7 +289,15 @@ class BaseMonitor:
         self.displayed_count += 1
     
     def _load_initial_items(self, all_operations, extract_func, format_func, max_display=50):
-        """Load historical items on monitor show"""
+        """
+        Load historical items on monitor show.
+        
+        Args:
+            all_operations: Complete list of historical operations
+            extract_func: Function to extract relevant items from operations
+            format_func: Function to format items for display
+            max_display: Maximum number of items to display initially
+        """
         self.items = extract_func(all_operations)
         
         # Display last N items
@@ -214,21 +326,31 @@ class BaseMonitor:
         pass
 
 
-# ============================================================================
-# MAIN GUI CLASS
-# ============================================================================
 
 class LiveMonitorGUI:
+    """
+    Main GUI application for live system monitoring.
+    
+    Provides task-manager-style interface with multiple monitor views
+    for tracking document Q&A pipeline operations in real-time.
+    """
+    
     def __init__(self):
+        """Initialize the live monitor GUI with default state and event handling."""
+        # Pipeline state
         self.pipeline = None
         self.status = "IDLE"
         self.last_operation = "System started"
         self.operation_count = 0
         self.start_time = time.time()
         self.running = True
-        self.status_file = Path("data/pipeline_status.json")
-        self.history_file = Path("data/operation_history.jsonl")
-        self.operation_history = deque(maxlen=50)  # Keep last 50 operations
+        
+        # File paths
+        self.status_file = STATUS_FILE
+        self.history_file = HISTORY_FILE
+        
+        # Operation tracking
+        self.operation_history = deque(maxlen=MAX_OPERATIONS_DISPLAY)
         
         # Current view and active monitor
         self.current_view = "menu"  # Start at main menu
@@ -274,9 +396,17 @@ class LiveMonitorGUI:
         
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
-        
+    
+    # ========================================================================
+    # UI SETUP & STYLING
+    # ========================================================================
+    
     def setup_styles(self):
-        """Setup ttk styles for dark theme"""
+        """
+        Setup ttk styles for dark theme.
+        
+        Configures colors, fonts, and button styles for the entire application.
+        """
         style = ttk.Style()
         style.theme_use('clam')
         
@@ -298,13 +428,25 @@ class LiveMonitorGUI:
                  background=[('active', '#007acc'), ('!active', '#2d2d30')],
                  foreground=[('active', '#ffffff'), ('!active', '#ffffff')])
     
+    # ========================================================================
+    # NAVIGATION & VIEW MANAGEMENT
+    # ========================================================================
+    
     def clear_container(self):
-        """Clear the main container"""
+        """
+        Clear the main container.
+        
+        Destroys all child widgets in the main container frame.
+        """
         for widget in self.main_container.winfo_children():
             widget.destroy()
     
     def show_menu(self):
-        """Show the main menu with monitor options"""
+        """
+        Show the main menu with monitor options.
+        
+        Displays a grid of buttons for accessing different monitor views.
+        """
         self.clear_container()
         self.current_view = "menu"
         
@@ -364,7 +506,13 @@ class LiveMonitorGUI:
                 row += 1
     
     def show_generic_monitor(self, name, monitor_class):
-        """Generic method to show any monitor view"""
+        """
+        Generic method to show any monitor view.
+        
+        Args:
+            name: Display name for the monitor
+            monitor_class: Monitor class to instantiate and display
+        """
         self.clear_container()
         self.current_view = name.lower().replace(" ", "_")
         
@@ -375,7 +523,12 @@ class LiveMonitorGUI:
         self.active_monitor = monitor
     
     def show_placeholder(self, name):
-        """Show placeholder for monitors not yet implemented"""
+        """
+        Show placeholder for monitors not yet implemented.
+        
+        Args:
+            name: Name of the monitor view
+        """
         self.clear_container()
         self.current_view = name
         self.active_monitor = None
@@ -404,7 +557,14 @@ class LiveMonitorGUI:
     # ========================================================================
     
     def _load_historical_operations(self):
-        """Load existing operations on startup"""
+        """
+        Load existing operations on startup.
+        
+        Reads historical operations from JSONL file for initial display.
+        
+        Returns:
+            List of operation dictionaries
+        """
         operations = []
         try:
             if self.history_file.exists():
@@ -417,12 +577,22 @@ class LiveMonitorGUI:
         return operations
     
     def _on_operation_event(self, operation_data):
-        """Callback when new operation is published (called from backend thread)"""
+        """
+        Callback when new operation is published (called from backend thread).
+        
+        Args:
+            operation_data: Dictionary containing operation information
+        """
         # Add to queue for GUI thread processing
         self.operation_queue.put(operation_data)
     
     def _file_watcher_loop(self):
-        """Watch file for new operations (for operations not using event bus)"""
+        """
+        Watch file for new operations (for operations not using event bus).
+        
+        Monitors the history file for size changes and loads new operations.
+        Runs in a background thread.
+        """
         last_size = 0
         if self.history_file.exists():
             last_size = self.history_file.stat().st_size
@@ -447,7 +617,12 @@ class LiveMonitorGUI:
                 time.sleep(1)
     
     def _process_operation_queue(self):
-        """Process queued operations on GUI thread"""
+        """
+        Process queued operations on GUI thread.
+        
+        Processes all pending operations from the queue and updates
+        the active monitor and operation count. Scheduled every 50ms.
+        """
         try:
             while not self.operation_queue.empty():
                 operation_data = self.operation_queue.get_nowait()
@@ -467,14 +642,28 @@ class LiveMonitorGUI:
             logger.error(f"Error processing operation queue: {e}")
         
         # Schedule next check (every 50ms for responsive UI)
-        self.root.after(50, self._process_operation_queue)
+        self.root.after(QUEUE_PROCESS_INTERVAL_MS, self._process_operation_queue)
+    
+    # ========================================================================
+    # DATA ACCESS & STATUS
+    # ========================================================================
     
     def load_operation_history(self):
-        """Return all operations (for monitors that need full history)"""
+        """
+        Return all operations (for monitors that need full history).
+        
+        Returns:
+            List of all operation dictionaries
+        """
         return self.all_operations
     
     def read_status(self):
-        """Read current status from file"""
+        """
+        Read current status from file.
+        
+        Returns:
+            Tuple of (status, last_operation, timestamp, operation_id)
+        """
         try:
             if self.status_file.exists():
                 with open(self.status_file, 'r') as f:
@@ -489,7 +678,12 @@ class LiveMonitorGUI:
         return ("IDLE", "Unknown", 0, "")
     
     def get_gpu_info(self):
-        """Get GPU information if available"""
+        """
+        Get GPU information if available.
+        
+        Returns:
+            String with GPU name and memory info, or error message
+        """
         try:
             import torch
             if torch.cuda.is_available():
@@ -502,14 +696,31 @@ class LiveMonitorGUI:
             return "GPU info unavailable"
     
     def format_uptime(self, seconds):
-        """Format uptime as HH:MM:SS"""
+        """
+        Format uptime as HH:MM:SS.
+        
+        Args:
+            seconds: Number of seconds to format
+            
+        Returns:
+            Formatted time string (HH:MM:SS)
+        """
         hours = int(seconds // 3600)
         minutes = int((seconds % 3600) // 60)
         secs = int(seconds % 60)
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     
+    # ========================================================================
+    # GENERAL INFO VIEW UPDATES
+    # ========================================================================
+    
     def _update_general_info_with_operation(self, operation_data):
-        """Update general info view with new operation (event-driven)"""
+        """
+        Update general info view with new operation (event-driven).
+        
+        Args:
+            operation_data: Dictionary containing operation information
+        """
         if not hasattr(self, 'operations_text'):
             return
         
@@ -533,7 +744,11 @@ class LiveMonitorGUI:
             self.operations_text.see(tk.END)
     
     def update_general_info(self):
-        """Update General Info view (periodic updates for status/time only)"""
+        """
+        Update General Info view (periodic updates for status/time only).
+        
+        Called every second to update time-based information and system status.
+        """
         # Read current status
         status, last_op, timestamp, operation_id = self.read_status()
         
@@ -552,14 +767,14 @@ class LiveMonitorGUI:
         self.operation_label.config(text=last_op)
         
         # Update pipeline status
-        index_path = "data/index/faiss_index/index.faiss"
+        index_path = INDEX_PATH
         if os.path.exists(index_path):
             index_size = os.path.getsize(index_path) / 1024  # KB
             self.index_label.config(text=f"Loaded ({index_size:.1f} KB)", foreground="#4ec9b0")
         else:
             self.index_label.config(text="Not found", foreground="#f48771")
         
-        docs_path = "data/documents"
+        docs_path = DOCS_PATH
         if os.path.exists(docs_path):
             doc_files = [f for f in os.listdir(docs_path) if f.endswith(('.pdf', '.docx', '.txt', '.md'))]
             self.docs_label.config(text=f"{len(doc_files)} files in {docs_path}", foreground="#4ec9b0")
@@ -578,14 +793,18 @@ class LiveMonitorGUI:
         
         # Schedule next update (1 second for status/time updates)
         if self.current_view == "general_info":
-            self.root.after(1000, self.update_general_info)
+            self.root.after(STATUS_UPDATE_INTERVAL_MS, self.update_general_info)
     
     # ========================================================================
     # BACKGROUND INITIALIZATION
     # ========================================================================
     
     def init_pipeline_async(self):
-        """Initialize pipeline in background"""
+        """
+        Initialize pipeline in background.
+        
+        Runs in a separate thread to avoid blocking the GUI.
+        """
         try:
             self.pipeline = DocumentPipeline()
             logger.info("Pipeline initialized successfully")
@@ -593,21 +812,33 @@ class LiveMonitorGUI:
             logger.error(f"Failed to initialize pipeline: {e}")
     
     def on_closing(self):
-        """Handle window close event"""
+        """
+        Handle window close event.
+        
+        Cleans up resources and shuts down threads gracefully.
+        """
         self.running = False
         event_bus.unsubscribe(self._on_operation_event)
         self.root.destroy()
     
     def run(self):
-        """Start the GUI application"""
+        """
+        Start the GUI application.
+        
+        Enters the Tkinter main event loop.
+        """
         self.root.mainloop()
     
     # ========================================================================
-    # MONITOR VIEW: GENERAL INFO
+    # GENERAL INFO VIEW (FULL IMPLEMENTATION)
     # ========================================================================
     
     def show_general_info(self):
-        """Show the general info monitor (original view)"""
+        """
+        Show the general info monitor (original view).
+        
+        Displays comprehensive system status with operations, pipeline info, and runtime stats.
+        """
         # Clear current container
         for widget in self.main_container.winfo_children():
             widget.destroy()
@@ -629,10 +860,15 @@ class LiveMonitorGUI:
             self.operations_text.see(tk.END)
         
         # Start periodic updates for status/time
-        self.root.after(1000, self.update_general_info)
+        self.root.after(STATUS_UPDATE_INTERVAL_MS, self.update_general_info)
         
     def create_general_info_widgets(self):
-        """Create all GUI widgets for General Info view"""
+        """
+        Create all GUI widgets for General Info view.
+        
+        Builds the complete UI with status frames, operation log,
+        pipeline info, and runtime statistics.
+        """
         # Main container with padding
         main_frame = ttk.Frame(self.main_container, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
@@ -717,9 +953,19 @@ class LiveMonitorGUI:
 # ============================================================================
 
 class QuestionInputMonitor(BaseMonitor):
-    """Monitor for incoming questions"""
+    """
+    Monitor for incoming user questions.
+    
+    Displays real-time question submissions with character counts,
+    streaming indicators, and statistics.
+    """
     
     def show(self):
+        """
+        Display the Question Input monitor view.
+        
+        Creates UI with question statistics and scrollable question log.
+        """
         self.create_frame()
         row = self.add_back_button()
         row = self.add_title("QUESTION INPUT MONITOR", row)
@@ -742,7 +988,12 @@ class QuestionInputMonitor(BaseMonitor):
         self._update_stats()
     
     def on_new_operation(self, operation_data):
-        """Handle new operation event"""
+        """
+        Handle new operation event for question input.
+        
+        Args:
+            operation_data: Dictionary containing operation information
+        """
         op_type = operation_data.get('operation_type', '')
         if op_type == 'question_input':
             metadata = operation_data.get('metadata', {})
@@ -763,7 +1014,11 @@ class QuestionInputMonitor(BaseMonitor):
                 self._update_stats()
     
     def _update_stats(self):
-        """Update statistics labels"""
+        """
+        Update statistics labels for questions.
+        
+        Calculates and displays total questions, average length, and last question.
+        """
         self.widgets['total'].config(text=str(len(self.items)))
         if self.items:
             total_length = sum(q['length'] for q in self.items)
@@ -776,7 +1031,15 @@ class QuestionInputMonitor(BaseMonitor):
             self.widgets['last'].config(text="N/A")
     
     def _extract_questions(self, operations):
-        """Extract question data from operations"""
+        """
+        Extract question data from operations.
+        
+        Args:
+            operations: List of all operation dictionaries
+            
+        Returns:
+            List of question data dictionaries
+        """
         questions = []
         for op in operations:
             op_type = op.get('operation_type', '')
@@ -794,10 +1057,21 @@ class QuestionInputMonitor(BaseMonitor):
 
 
 
+
 class EmbeddingQueryMonitor(BaseMonitor):
-    """Monitor for query embedding process"""
+    """
+    Monitor for query embedding process.
+    
+    Tracks embedding generation with model info, vector dimensions,
+    device usage (GPU/CPU), and performance metrics.
+    """
     
     def show(self):
+        """
+        Display the Embedding Query monitor view.
+        
+        Creates UI with model info, embedding statistics, and operation log.
+        """
         self.create_frame()
         row = self.add_back_button()
         row = self.add_title("EMBEDDING QUERY MONITOR", row)
@@ -825,7 +1099,12 @@ class EmbeddingQueryMonitor(BaseMonitor):
         self._update_stats()
     
     def on_new_operation(self, operation_data):
-        """Handle new operation event"""
+        """
+        Handle new operation event for embedding queries.
+        
+        Args:
+            operation_data: Dictionary containing operation information
+        """
         op_type = operation_data.get('operation_type', '')
         if op_type == 'embedding_query':
             metadata = operation_data.get('metadata', {})
@@ -846,7 +1125,11 @@ class EmbeddingQueryMonitor(BaseMonitor):
             self._update_stats()
     
     def _update_stats(self):
-        """Update statistics labels"""
+        """
+        Update statistics labels for embeddings.
+        
+        Updates device status, total embeddings, and average processing time.
+        """
         self._update_device_status()
         self.widgets['total'].config(text=str(len(self.items)))
         if self.items:
@@ -856,7 +1139,11 @@ class EmbeddingQueryMonitor(BaseMonitor):
             self.widgets['avg_time'].config(text="0.000s")
     
     def _update_device_status(self):
-        """Check and update GPU/CPU status"""
+        """
+        Check and update GPU/CPU status.
+        
+        Detects CUDA availability and updates the device label with appropriate color.
+        """
         try:
             import torch
             device = "CUDA (GPU)" if torch.cuda.is_available() else "CPU"
@@ -866,7 +1153,15 @@ class EmbeddingQueryMonitor(BaseMonitor):
             self.widgets['device'].config(text="CPU", foreground="#dcdcaa")
     
     def _extract_embeddings(self, operations):
-        """Extract embedding data from operations"""
+        """
+        Extract embedding data from operations.
+        
+        Args:
+            operations: List of all operation dictionaries
+            
+        Returns:
+            List of embedding data dictionaries
+        """
         embeddings = []
         for op in operations:
             op_type = op.get('operation_type', '')
@@ -886,10 +1181,21 @@ class EmbeddingQueryMonitor(BaseMonitor):
 
 
 
+
 class FAISSSearchMonitor(BaseMonitor):
-    """Monitor for FAISS vector search operations"""
+    """
+    Monitor for FAISS vector search operations.
+    
+    Displays search operations with index status, vector counts,
+    K values, result counts, and search timing metrics.
+    """
     
     def show(self):
+        """
+        Display the FAISS Search monitor view.
+        
+        Creates UI with index information, search statistics, and operation log.
+        """
         self.create_frame()
         row = self.add_back_button()
         row = self.add_title("FAISS SEARCH MONITOR", row)
@@ -919,7 +1225,12 @@ class FAISSSearchMonitor(BaseMonitor):
         self._update_stats()
     
     def on_new_operation(self, operation_data):
-        """Handle new operation event"""
+        """
+        Handle new operation event for FAISS searches.
+        
+        Args:
+            operation_data: Dictionary containing operation information
+        """
         op_type = operation_data.get('operation_type', '')
         if op_type == 'faiss_search':
             metadata = operation_data.get('metadata', {})
@@ -941,7 +1252,11 @@ class FAISSSearchMonitor(BaseMonitor):
             self._update_stats()
     
     def _update_stats(self):
-        """Update statistics labels"""
+        """
+        Update statistics labels for FAISS searches.
+        
+        Updates index status, total searches, average results, and average search time.
+        """
         self._update_index_status()
         self.widgets['total_searches'].config(text=str(len(self.items)))
         if self.items:
@@ -954,8 +1269,12 @@ class FAISSSearchMonitor(BaseMonitor):
             self.widgets['avg_time'].config(text="0.000s")
     
     def _update_index_status(self):
-        """Check and update FAISS index status"""
-        index_path = "data/index/faiss_index/index.faiss"
+        """
+        Check and update FAISS index status.
+        
+        Checks index file existence, size, and vector count from the pipeline.
+        """
+        index_path = INDEX_PATH
         if os.path.exists(index_path):
             index_size = os.path.getsize(index_path) / 1024
             self.widgets['index_status'].config(text="Loaded", foreground="#4ec9b0")
@@ -975,7 +1294,15 @@ class FAISSSearchMonitor(BaseMonitor):
             self.widgets['vector_count'].config(text="0")
     
     def _extract_searches(self, operations):
-        """Extract search data from operations"""
+        """
+        Extract search data from operations.
+        
+        Args:
+            operations: List of all operation dictionaries
+            
+        Returns:
+            List of search data dictionaries
+        """
         searches = []
         for op in operations:
             op_type = op.get('operation_type', '')
