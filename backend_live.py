@@ -16,10 +16,45 @@ from backend_logic import DocumentPipeline
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 from collections import deque
+from queue import Queue
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# ============================================================================
+# EVENT SYSTEM - Push-based data delivery
+# ============================================================================
+
+class OperationEventBus:
+    """Thread-safe event bus for pushing operations to monitors in real-time"""
+    
+    def __init__(self):
+        self.subscribers = []
+        self.lock = threading.Lock()
+    
+    def subscribe(self, callback):
+        """Subscribe to operation events"""
+        with self.lock:
+            self.subscribers.append(callback)
+    
+    def unsubscribe(self, callback):
+        """Unsubscribe from operation events"""
+        with self.lock:
+            if callback in self.subscribers:
+                self.subscribers.remove(callback)
+    
+    def publish(self, operation_data):
+        """Publish operation to all subscribers (called from backend thread)"""
+        with self.lock:
+            for callback in self.subscribers[:]:  # Copy to avoid modification during iteration
+                try:
+                    callback(operation_data)
+                except Exception as e:
+                    logger.error(f"Error in subscriber callback: {e}")
+
+# Global event bus instance
+event_bus = OperationEventBus()
 
 # ============================================================================
 # BASE MONITOR CLASS - Reusable for all monitor views
@@ -33,7 +68,8 @@ class BaseMonitor:
         self.gui = gui_instance
         self.main_frame = None
         self.widgets = {}
-        self.last_count = 0
+        self.items = []  # Store all items for this monitor
+        self.displayed_count = 0  # Track what's displayed
         
     def create_frame(self):
         """Create the main frame for this monitor"""
@@ -126,34 +162,56 @@ class BaseMonitor:
         for delay in [10, 50, 150, 300]:
             self.gui.root.after(delay, scroll)
     
-    def _update_display_if_changed(self, items, format_func, max_display=50):
-        """Generic method to update text display when item count changes"""
-        if len(items) > self.last_count:
-            if self.last_count == 0 or len(items) < self.last_count:
-                # Full refresh
-                self.text_widget.config(state=tk.NORMAL)
-                self.text_widget.delete(1.0, tk.END)
-                self.text_widget.config(state=tk.DISABLED)
-                new_lines = []
-                for item in items[-max_display:]:
-                    new_lines.extend(format_func(item))
-                self.update_text_widget(self.text_widget, new_lines)
-            else:
-                # Incremental update
-                new_lines = []
-                for item in items[self.last_count:]:
-                    new_lines.extend(format_func(item))
-                self.update_text_widget(self.text_widget, new_lines)
-            
-            self.last_count = len(items)
+    def _add_item_to_display(self, item, format_func):
+        """Add single item to display (event-driven)"""
+        if not hasattr(self, 'text_widget'):
+            return
+        
+        # Check if at bottom
+        yview = self.text_widget.yview()
+        at_bottom = yview[1] >= 0.99
+        
+        # Add to display
+        self.text_widget.config(state=tk.NORMAL)
+        lines = format_func(item)
+        for line in lines:
+            self.text_widget.insert(tk.END, line + "\n")
+        self.text_widget.config(state=tk.DISABLED)
+        
+        # Auto-scroll if at bottom
+        if at_bottom:
+            self.text_widget.see(tk.END)
+        
+        self.displayed_count += 1
+    
+    def _load_initial_items(self, all_operations, extract_func, format_func, max_display=50):
+        """Load historical items on monitor show"""
+        self.items = extract_func(all_operations)
+        
+        # Display last N items
+        display_items = self.items[-max_display:]
+        if display_items:
+            self.text_widget.config(state=tk.NORMAL)
+            for item in display_items:
+                lines = format_func(item)
+                for line in lines:
+                    self.text_widget.insert(tk.END, line + "\n")
+            self.text_widget.config(state=tk.DISABLED)
+            self.text_widget.see(tk.END)
+        
+        self.displayed_count = len(self.items)
+    
+    def on_new_operation(self, operation_data):
+        """Called when new operation arrives (event-driven) - override in subclasses"""
+        pass
     
     def show(self):
         """Override this method in subclasses"""
         raise NotImplementedError
     
-    def update(self):
-        """Override this method in subclasses"""
-        raise NotImplementedError
+    def update_stats(self):
+        """Override this method in subclasses for periodic stat updates"""
+        pass
 
 
 # ============================================================================
@@ -171,16 +229,16 @@ class LiveMonitorGUI:
         self.status_file = Path("data/pipeline_status.json")
         self.history_file = Path("data/operation_history.jsonl")
         self.operation_history = deque(maxlen=50)  # Keep last 50 operations
-        self.last_history_size = 0
         
         # Current view and active monitor
         self.current_view = "menu"  # Start at main menu
         self.active_monitor = None  # Currently active monitor instance
         
-        # Centralized data cache
-        self.cached_operations = []
-        self.last_file_mtime = 0
-        self.cached_status = {"status": "IDLE", "operation": "Starting...", "timestamp": 0}
+        # Event-driven operation queue (thread-safe)
+        self.operation_queue = Queue()
+        
+        # Load historical data on startup
+        self.all_operations = self._load_historical_operations()
         
         # Create the GUI
         self.root = tk.Tk()
@@ -200,9 +258,19 @@ class LiveMonitorGUI:
         # Show menu initially
         self.show_menu()
         
-        # Start monitoring thread
-        self.monitor_thread = threading.Thread(target=self.monitor_loop, daemon=True)
-        self.monitor_thread.start()
+        # Subscribe to operation events
+        event_bus.subscribe(self._on_operation_event)
+        
+        # Initialize pipeline in background
+        init_thread = threading.Thread(target=self.init_pipeline_async, daemon=True)
+        init_thread.start()
+        
+        # Start file watcher thread (watches for new operations from file)
+        self.watcher_thread = threading.Thread(target=self._file_watcher_loop, daemon=True)
+        self.watcher_thread.start()
+        
+        # Start GUI update processor (processes queued operations on GUI thread)
+        self._process_operation_queue()
         
         # Handle window close
         self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
@@ -259,12 +327,9 @@ class LiveMonitorGUI:
             ("General Info", self.show_general_info),
             
             # === QUESTION ANSWERING FLOW (in order) ===
-            ("Question Input", lambda: self.show_generic_monitor("Question Input", 
-                ["Searching:", "Answering"], QuestionInputMonitor)),
-            ("Embedding Query", lambda: self.show_generic_monitor("Embedding Query", 
-                ["Searching:", "Answering"], EmbeddingQueryMonitor)),
-            ("FAISS Search", lambda: self.show_generic_monitor("FAISS Search", 
-                ["Searching:", "Answering"], FAISSSearchMonitor)),
+            ("Question Input", lambda: self.show_generic_monitor("Question Input", QuestionInputMonitor)),
+            ("Embedding Query", lambda: self.show_generic_monitor("Embedding Query", EmbeddingQueryMonitor)),
+            ("FAISS Search", lambda: self.show_generic_monitor("FAISS Search", FAISSSearchMonitor)),
             ("Relevance Filter", lambda: self.show_placeholder("Relevance Filter")),
             ("Context Builder", lambda: self.show_placeholder("Context Builder")),
             ("Prompt Assembly", lambda: self.show_placeholder("Prompt Assembly")),
@@ -298,7 +363,7 @@ class LiveMonitorGUI:
                 col = 0
                 row += 1
     
-    def show_generic_monitor(self, name, keywords, monitor_class):
+    def show_generic_monitor(self, name, monitor_class):
         """Generic method to show any monitor view"""
         self.clear_container()
         self.current_view = name.lower().replace(" ", "_")
@@ -308,9 +373,6 @@ class LiveMonitorGUI:
         
         # Store monitor for updates
         self.active_monitor = monitor
-        
-        # Initial populate
-        self.root.after(50, monitor.update)
     
     def show_placeholder(self, name):
         """Show placeholder for monitors not yet implemented"""
@@ -338,54 +400,93 @@ class LiveMonitorGUI:
         msg.grid(row=2, column=0)
     
     # ========================================================================
-    # UTILITY METHODS
+    # EVENT-DRIVEN SYSTEM METHODS
     # ========================================================================
     
-    def read_status(self):
-        """Read status with caching - always reads (status changes frequently)"""
+    def _load_historical_operations(self):
+        """Load existing operations on startup"""
+        operations = []
         try:
-            if not self.status_file.exists():
-                return (self.cached_status["status"], 
-                       self.cached_status["operation"], 
-                       self.cached_status.get("timestamp", 0), "")
-            
-            with open(self.status_file, 'r') as f:
-                data = json.load(f)
-                self.cached_status = data
-                return (data.get("status", "IDLE"),
-                       data.get("operation", "Unknown"),
-                       data.get("timestamp", 0),
-                       data.get("operation_id", ""))
+            if self.history_file.exists():
+                with open(self.history_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        if line.strip():
+                            operations.append(json.loads(line))
         except Exception as e:
-            logger.error(f"Error reading status: {e}")
-            return (self.cached_status.get("status", "IDLE"),
-                   self.cached_status.get("operation", f"Error: {e}"),
-                   self.cached_status.get("timestamp", 0), "")
+            logger.error(f"Error loading historical operations: {e}")
+        return operations
+    
+    def _on_operation_event(self, operation_data):
+        """Callback when new operation is published (called from backend thread)"""
+        # Add to queue for GUI thread processing
+        self.operation_queue.put(operation_data)
+    
+    def _file_watcher_loop(self):
+        """Watch file for new operations (for operations not using event bus)"""
+        last_size = 0
+        if self.history_file.exists():
+            last_size = self.history_file.stat().st_size
+        
+        while self.running:
+            try:
+                if self.history_file.exists():
+                    current_size = self.history_file.stat().st_size
+                    if current_size > last_size:
+                        # File grew, read new lines
+                        with open(self.history_file, 'r', encoding='utf-8') as f:
+                            f.seek(last_size)
+                            for line in f:
+                                if line.strip():
+                                    operation_data = json.loads(line)
+                                    self.operation_queue.put(operation_data)
+                        last_size = current_size
+                
+                time.sleep(0.1)  # Check every 100ms
+            except Exception as e:
+                logger.error(f"File watcher error: {e}")
+                time.sleep(1)
+    
+    def _process_operation_queue(self):
+        """Process queued operations on GUI thread"""
+        try:
+            while not self.operation_queue.empty():
+                operation_data = self.operation_queue.get_nowait()
+                
+                # Add to all operations list
+                self.all_operations.append(operation_data)
+                self.operation_count = len(self.all_operations)
+                
+                # Update general info if visible
+                if self.current_view == "general_info":
+                    self._update_general_info_with_operation(operation_data)
+                
+                # Update active monitor if exists
+                if self.active_monitor:
+                    self.active_monitor.on_new_operation(operation_data)
+        except Exception as e:
+            logger.error(f"Error processing operation queue: {e}")
+        
+        # Schedule next check (every 50ms for responsive UI)
+        self.root.after(50, self._process_operation_queue)
     
     def load_operation_history(self):
-        """Load operations with intelligent caching - only reads if file changed"""
+        """Return all operations (for monitors that need full history)"""
+        return self.all_operations
+    
+    def read_status(self):
+        """Read current status from file"""
         try:
-            if not self.history_file.exists():
-                return self.cached_operations
-            
-            # Check if file was modified
-            current_mtime = self.history_file.stat().st_mtime
-            if current_mtime == self.last_file_mtime and self.cached_operations:
-                return self.cached_operations  # Return cached data
-            
-            # File changed or first load, reload everything
-            self.last_file_mtime = current_mtime
-            operations = []
-            with open(self.history_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    if line.strip():
-                        operations.append(json.loads(line))
-            
-            self.cached_operations = operations
-            return operations
+            if self.status_file.exists():
+                with open(self.status_file, 'r') as f:
+                    data = json.load(f)
+                    return (data.get("status", "IDLE"),
+                           data.get("operation", "Unknown"),
+                           data.get("timestamp", 0),
+                           data.get("operation_id", ""))
         except Exception as e:
-            logger.error(f"Error loading history: {e}")
-            return self.cached_operations
+            logger.error(f"Error reading status: {e}")
+        
+        return ("IDLE", "Unknown", 0, "")
     
     def get_gpu_info(self):
         """Get GPU information if available"""
@@ -407,34 +508,36 @@ class LiveMonitorGUI:
         secs = int(seconds % 60)
         return f"{hours:02d}:{minutes:02d}:{secs:02d}"
     
-    def update_gui(self):
-        """Update all GUI elements with current data"""
-        # Route to appropriate update method based on current view
-        if self.current_view == "general_info":
-            self.update_general_info()
-        elif hasattr(self, 'active_monitor') and self.active_monitor:
-            self.active_monitor.update()
+    def _update_general_info_with_operation(self, operation_data):
+        """Update general info view with new operation (event-driven)"""
+        if not hasattr(self, 'operations_text'):
+            return
+        
+        # Format operation
+        op_time = datetime.fromtimestamp(operation_data.get('timestamp', 0)).strftime('%H:%M:%S')
+        formatted = f"[{op_time}] {operation_data.get('operation', 'Unknown')}"
+        self.operation_history.append(formatted)
+        
+        # Update GUI
+        self.count_label.config(text=str(self.operation_count))
+        
+        # Check if user is at bottom
+        yview = self.operations_text.yview()
+        at_bottom = yview[1] >= 0.99
+        
+        self.operations_text.config(state=tk.NORMAL)
+        self.operations_text.insert(tk.END, formatted + "\n")
+        self.operations_text.config(state=tk.DISABLED)
+        
+        if at_bottom:
+            self.operations_text.see(tk.END)
     
     def update_general_info(self):
-        """Update General Info view"""
+        """Update General Info view (periodic updates for status/time only)"""
         # Read current status
         status, last_op, timestamp, operation_id = self.read_status()
         
-        # Load operation history
-        all_operations = self.load_operation_history()
-        self.operation_count = len(all_operations)
-        
-        # Update operation history deque and track new operations
-        new_operations = []
-        if all_operations and len(all_operations) > self.last_history_size:
-            for op in all_operations[self.last_history_size:]:
-                op_time = datetime.fromtimestamp(op['timestamp']).strftime('%H:%M:%S')
-                formatted = f"[{op_time}] {op['operation']}"
-                self.operation_history.append(formatted)
-                new_operations.append(formatted)
-            self.last_history_size = len(all_operations)
-        
-        # Update status directly - no delays or filtering
+        # Update status
         self.status = status
         self.last_operation = last_op
         
@@ -447,22 +550,6 @@ class LiveMonitorGUI:
         }
         self.status_label.config(text=status, foreground=status_colors.get(status, "#ffffff"))
         self.operation_label.config(text=last_op)
-        self.count_label.config(text=str(self.operation_count))
-        
-        # Update operations text with smart scroll handling
-        if new_operations:
-            # Check if user is viewing the live stream (at bottom)
-            yview = self.operations_text.yview()
-            at_bottom = yview[1] >= 0.99
-            
-            self.operations_text.config(state=tk.NORMAL)
-            for op in new_operations:
-                self.operations_text.insert(tk.END, op + "\n")
-            self.operations_text.config(state=tk.DISABLED)
-            
-            # Only auto-scroll if user was already at the bottom
-            if at_bottom:
-                self.operations_text.see(tk.END)
         
         # Update pipeline status
         index_path = "data/index/faiss_index/index.faiss"
@@ -487,33 +574,28 @@ class LiveMonitorGUI:
         # Update status bar with last update time
         if timestamp > 0:
             age = time.time() - timestamp
-            self.statusbar.config(text=f"Monitor running | Refresh: 0.15s | Last status: {age:.1f}s ago")
+            self.statusbar.config(text=f"Monitor running | Event-driven | Last status: {age:.1f}s ago")
+        
+        # Schedule next update (1 second for status/time updates)
+        if self.current_view == "general_info":
+            self.root.after(1000, self.update_general_info)
     
     # ========================================================================
-    # BACKGROUND THREAD
+    # BACKGROUND INITIALIZATION
     # ========================================================================
     
-    def monitor_loop(self):
-        """Background thread that updates the GUI"""
-        # Initialize pipeline in background
-        time.sleep(0.5)
+    def init_pipeline_async(self):
+        """Initialize pipeline in background"""
         try:
             self.pipeline = DocumentPipeline()
+            logger.info("Pipeline initialized successfully")
         except Exception as e:
-            print(f"Failed to initialize pipeline: {e}")
-        
-        while self.running:
-            try:
-                # Schedule GUI update on main thread
-                self.root.after(0, self.update_gui)
-                time.sleep(0.15)  # Update every 150ms for faster response
-            except Exception as e:
-                print(f"Monitor loop error: {e}")
-                time.sleep(1)
+            logger.error(f"Failed to initialize pipeline: {e}")
     
     def on_closing(self):
         """Handle window close event"""
         self.running = False
+        event_bus.unsubscribe(self._on_operation_event)
         self.root.destroy()
     
     def run(self):
@@ -535,27 +617,19 @@ class LiveMonitorGUI:
         # Create the original widgets in a new frame
         self.create_general_info_widgets()
         
-        # Populate with existing operations from deque
-        if self.operation_history:
+        # Populate with historical operations
+        if self.all_operations:
             self.operations_text.config(state=tk.NORMAL)
-            for op in list(self.operation_history):
-                self.operations_text.insert(tk.END, op + "\n")
+            for op in self.all_operations[-50:]:  # Last 50 operations
+                op_time = datetime.fromtimestamp(op.get('timestamp', 0)).strftime('%H:%M:%S')
+                formatted = f"[{op_time}] {op.get('operation', 'Unknown')}"
+                self.operation_history.append(formatted)
+                self.operations_text.insert(tk.END, formatted + "\n")
             self.operations_text.config(state=tk.DISABLED)
+            self.operations_text.see(tk.END)
         
-        # Multiple scroll attempts with different methods to ensure it works
-        def scroll_to_bottom():
-            try:
-                self.operations_text.update_idletasks()
-                self.operations_text.yview_moveto(1.0)
-                self.operations_text.see(tk.END)
-            except:
-                pass
-        
-        # Try multiple times with increasing delays
-        self.root.after(10, scroll_to_bottom)
-        self.root.after(50, scroll_to_bottom)
-        self.root.after(150, scroll_to_bottom)
-        self.root.after(300, scroll_to_bottom)
+        # Start periodic updates for status/time
+        self.root.after(1000, self.update_general_info)
         
     def create_general_info_widgets(self):
         """Create all GUI widgets for General Info view"""
@@ -657,30 +731,49 @@ class QuestionInputMonitor(BaseMonitor):
         ], row)
         
         self.text_widget, row = self.add_scrollable_text("RECENT QUESTIONS", 15, row)
-        self._schedule_scroll_to_bottom()
-    
-    def update(self):
+        
+        # Load historical data
         all_operations = self.gui.load_operation_history()
-        questions = self._extract_questions(all_operations)
-        
-        # Update stats
-        self.widgets['total'].config(text=str(len(questions)))
-        if questions:
-            total_length = sum(q['length'] for q in questions)
-            avg_length = total_length / len(questions)
-            self.widgets['avg_length'].config(text=f"{avg_length:.0f} chars")
-            last_q = questions[-1]['question']
-            self.widgets['last'].config(text=last_q[:60] + "..." if len(last_q) > 60 else last_q)
-        else:
-            self.widgets['avg_length'].config(text="0 chars")
-            self.widgets['last'].config(text="N/A")
-        
-        # Update display
-        self._update_display_if_changed(questions, lambda q: [
+        self._load_initial_items(all_operations, self._extract_questions, lambda q: [
             f"[{q['time']}] ({q['length']} chars) {'[STREAMING]' if q.get('streaming') else ''}",
             f"  {q['question']}",
             ""
         ])
+        self._update_stats()
+    
+    def on_new_operation(self, operation_data):
+        """Handle new operation event"""
+        op_type = operation_data.get('operation_type', '')
+        if op_type == 'question_input':
+            metadata = operation_data.get('metadata', {})
+            question = metadata.get('question', operation_data.get('operation', 'N/A'))
+            if question and len(question) > 3:
+                q_data = {
+                    'question': question,
+                    'time': datetime.fromtimestamp(operation_data.get('timestamp', 0)).strftime('%H:%M:%S'),
+                    'length': metadata.get('question_length', len(question)),
+                    'streaming': metadata.get('streaming', False)
+                }
+                self.items.append(q_data)
+                self._add_item_to_display(q_data, lambda q: [
+                    f"[{q['time']}] ({q['length']} chars) {'[STREAMING]' if q.get('streaming') else ''}",
+                    f"  {q['question']}",
+                    ""
+                ])
+                self._update_stats()
+    
+    def _update_stats(self):
+        """Update statistics labels"""
+        self.widgets['total'].config(text=str(len(self.items)))
+        if self.items:
+            total_length = sum(q['length'] for q in self.items)
+            avg_length = total_length / len(self.items)
+            self.widgets['avg_length'].config(text=f"{avg_length:.0f} chars")
+            last_q = self.items[-1]['question']
+            self.widgets['last'].config(text=last_q[:60] + "..." if len(last_q) > 60 else last_q)
+        else:
+            self.widgets['avg_length'].config(text="0 chars")
+            self.widgets['last'].config(text="N/A")
     
     def _extract_questions(self, operations):
         """Extract question data from operations"""
@@ -721,27 +814,46 @@ class EmbeddingQueryMonitor(BaseMonitor):
         ], row)
         
         self.text_widget, row = self.add_scrollable_text("RECENT EMBEDDING OPERATIONS", 10, row)
-        self._schedule_scroll_to_bottom()
-    
-    def update(self):
-        self._update_device_status()
+        
+        # Load historical data
         all_operations = self.gui.load_operation_history()
-        embeddings = self._extract_embeddings(all_operations)
-        
-        # Update stats
-        self.widgets['total'].config(text=str(len(embeddings)))
-        if embeddings:
-            avg_time = sum(e.get('time_ms', 0) for e in embeddings) / len(embeddings)
-            self.widgets['avg_time'].config(text=f"{avg_time/1000:.3f}s")
-        else:
-            self.widgets['avg_time'].config(text="0.000s")
-        
-        # Update display
-        self._update_display_if_changed(embeddings, lambda e: [
+        self._load_initial_items(all_operations, self._extract_embeddings, lambda e: [
             f"[{e['time']}] {e['query'][:60]}...",
             f"  → Model: {e['model']}, Dim: {e['dim']}, Device: {e['device']}",
             ""
         ])
+        self._update_stats()
+    
+    def on_new_operation(self, operation_data):
+        """Handle new operation event"""
+        op_type = operation_data.get('operation_type', '')
+        if op_type == 'embedding_query':
+            metadata = operation_data.get('metadata', {})
+            e_data = {
+                'query': metadata.get('query', 'N/A'),
+                'model': metadata.get('model', 'unknown'),
+                'dim': metadata.get('dimensions', 0),
+                'device': metadata.get('device', 'unknown'),
+                'time_ms': metadata.get('search_time_ms', 0),
+                'time': datetime.fromtimestamp(operation_data.get('timestamp', 0)).strftime('%H:%M:%S')
+            }
+            self.items.append(e_data)
+            self._add_item_to_display(e_data, lambda e: [
+                f"[{e['time']}] {e['query'][:60]}...",
+                f"  → Model: {e['model']}, Dim: {e['dim']}, Device: {e['device']}",
+                ""
+            ])
+            self._update_stats()
+    
+    def _update_stats(self):
+        """Update statistics labels"""
+        self._update_device_status()
+        self.widgets['total'].config(text=str(len(self.items)))
+        if self.items:
+            avg_time = sum(e.get('time_ms', 0) for e in self.items) / len(self.items)
+            self.widgets['avg_time'].config(text=f"{avg_time/1000:.3f}s")
+        else:
+            self.widgets['avg_time'].config(text="0.000s")
     
     def _update_device_status(self):
         """Check and update GPU/CPU status"""
@@ -796,30 +908,50 @@ class FAISSSearchMonitor(BaseMonitor):
         ], row)
         
         self.text_widget, row = self.add_scrollable_text("RECENT SEARCH OPERATIONS", 10, row)
-        self._schedule_scroll_to_bottom()
-    
-    def update(self):
-        self._update_index_status()
-        all_operations = self.gui.load_operation_history()
-        searches = self._extract_searches(all_operations)
         
-        # Update stats
-        self.widgets['total_searches'].config(text=str(len(searches)))
-        if searches:
-            avg_results = sum(s.get('num_results', 0) for s in searches) / len(searches)
-            avg_time = sum(s.get('time_ms', 0) for s in searches) / len(searches)
+        # Load historical data
+        all_operations = self.gui.load_operation_history()
+        self._load_initial_items(all_operations, self._extract_searches, lambda s: [
+            f"[{s['time']}] Query: {s['query'][:50]}...",
+            f"  → K={s['k']}, Results={s['num_results']}, Index={s['index_size']}, Time={s['time_ms']:.2f}ms",
+            ""
+        ])
+        self._update_stats()
+    
+    def on_new_operation(self, operation_data):
+        """Handle new operation event"""
+        op_type = operation_data.get('operation_type', '')
+        if op_type == 'faiss_search':
+            metadata = operation_data.get('metadata', {})
+            s_data = {
+                'query': metadata.get('query', 'N/A'),
+                'k': metadata.get('k', 100),
+                'num_results': metadata.get('num_results', 0),
+                'index_size': metadata.get('index_size', 0),
+                'time_ms': metadata.get('search_time_ms', 0),
+                'device': metadata.get('device', 'unknown'),
+                'time': datetime.fromtimestamp(operation_data.get('timestamp', 0)).strftime('%H:%M:%S')
+            }
+            self.items.append(s_data)
+            self._add_item_to_display(s_data, lambda s: [
+                f"[{s['time']}] Query: {s['query'][:50]}...",
+                f"  → K={s['k']}, Results={s['num_results']}, Index={s['index_size']}, Time={s['time_ms']:.2f}ms",
+                ""
+            ])
+            self._update_stats()
+    
+    def _update_stats(self):
+        """Update statistics labels"""
+        self._update_index_status()
+        self.widgets['total_searches'].config(text=str(len(self.items)))
+        if self.items:
+            avg_results = sum(s.get('num_results', 0) for s in self.items) / len(self.items)
+            avg_time = sum(s.get('time_ms', 0) for s in self.items) / len(self.items)
             self.widgets['avg_results'].config(text=f"{avg_results:.0f}")
             self.widgets['avg_time'].config(text=f"{avg_time/1000:.3f}s")
         else:
             self.widgets['avg_results'].config(text="0")
             self.widgets['avg_time'].config(text="0.000s")
-        
-        # Update display
-        self._update_display_if_changed(searches, lambda s: [
-            f"[{s['time']}] Query: {s['query'][:50]}...",
-            f"  → K={s['k']}, Results={s['num_results']}, Index={s['index_size']}, Time={s['time_ms']:.2f}ms",
-            ""
-        ])
     
     def _update_index_status(self):
         """Check and update FAISS index status"""

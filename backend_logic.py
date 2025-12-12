@@ -12,6 +12,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
+# Import event bus for live monitoring
+try:
+    from backend_live import event_bus
+    LIVE_MONITORING_ENABLED = True
+except ImportError:
+    LIVE_MONITORING_ENABLED = False
+    event_bus = None
+
 # Core imports
 from docling.document_converter import DocumentConverter
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -81,6 +89,10 @@ class DocumentPipeline:
                 f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
                 f.flush()
                 os.fsync(f.fileno())
+            
+            # Publish to event bus for real-time monitoring (push-based)
+            if LIVE_MONITORING_ENABLED and event_bus:
+                event_bus.publish(log_entry)
             
             # Also update current status for real-time monitoring
             self._update_status_only(status, operation, metadata)
