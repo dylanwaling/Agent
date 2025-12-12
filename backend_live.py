@@ -8,6 +8,7 @@ import sys
 import time
 import threading
 import json
+import logging
 from datetime import datetime
 import psutil
 from pathlib import Path
@@ -15,6 +16,10 @@ from backend_logic import DocumentPipeline
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 from collections import deque
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # ============================================================================
 # BASE MONITOR CLASS - Reusable for all monitor views
@@ -171,6 +176,11 @@ class LiveMonitorGUI:
         # Current view and active monitor
         self.current_view = "menu"  # Start at main menu
         self.active_monitor = None  # Currently active monitor instance
+        
+        # Centralized data cache
+        self.cached_operations = []
+        self.last_file_mtime = 0
+        self.cached_status = {"status": "IDLE", "operation": "Starting...", "timestamp": 0}
         
         # Create the GUI
         self.root = tk.Tk()
@@ -332,33 +342,50 @@ class LiveMonitorGUI:
     # ========================================================================
     
     def read_status(self):
-        """Read status from shared file"""
+        """Read status with caching - always reads (status changes frequently)"""
         try:
-            if self.status_file.exists():
-                with open(self.status_file, 'r') as f:
-                    data = json.load(f)
-                    status = data.get("status", "IDLE")
-                    operation = data.get("operation", "Unknown")
-                    timestamp = data.get("timestamp", 0)
-                    operation_id = data.get("operation_id", "")
-                    return status, operation, timestamp, operation_id
-            return "IDLE", "Waiting for status file...", 0, ""
+            if not self.status_file.exists():
+                return (self.cached_status["status"], 
+                       self.cached_status["operation"], 
+                       self.cached_status.get("timestamp", 0), "")
+            
+            with open(self.status_file, 'r') as f:
+                data = json.load(f)
+                self.cached_status = data
+                return (data.get("status", "IDLE"),
+                       data.get("operation", "Unknown"),
+                       data.get("timestamp", 0),
+                       data.get("operation_id", ""))
         except Exception as e:
-            return "IDLE", f"Error reading status: {str(e)}", 0, ""
+            logger.error(f"Error reading status: {e}")
+            return (self.cached_status.get("status", "IDLE"),
+                   self.cached_status.get("operation", f"Error: {e}"),
+                   self.cached_status.get("timestamp", 0), "")
     
     def load_operation_history(self):
-        """Load operations from the history log file"""
-        operations = []
+        """Load operations with intelligent caching - only reads if file changed"""
         try:
-            if self.history_file.exists():
-                with open(self.history_file, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        if line.strip():
-                            op = json.loads(line)
-                            operations.append(op)
+            if not self.history_file.exists():
+                return self.cached_operations
+            
+            # Check if file was modified
+            current_mtime = self.history_file.stat().st_mtime
+            if current_mtime == self.last_file_mtime and self.cached_operations:
+                return self.cached_operations  # Return cached data
+            
+            # File changed or first load, reload everything
+            self.last_file_mtime = current_mtime
+            operations = []
+            with open(self.history_file, 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip():
+                        operations.append(json.loads(line))
+            
+            self.cached_operations = operations
+            return operations
         except Exception as e:
-            pass
-        return operations
+            logger.error(f"Error loading history: {e}")
+            return self.cached_operations
     
     def get_gpu_info(self):
         """Get GPU information if available"""
@@ -650,7 +677,7 @@ class QuestionInputMonitor(BaseMonitor):
         
         # Update display
         self._update_display_if_changed(questions, lambda q: [
-            f"[{q['time']}] ({q['length']} chars)",
+            f"[{q['time']}] ({q['length']} chars) {'[STREAMING]' if q.get('streaming') else ''}",
             f"  {q['question']}",
             ""
         ])
@@ -659,14 +686,16 @@ class QuestionInputMonitor(BaseMonitor):
         """Extract question data from operations"""
         questions = []
         for op in operations:
-            op_text = op.get('operation', '')
-            if 'Searching:' in op_text or 'Answering' in op_text:
-                question = op_text.replace('Searching:', '').replace('Answering (streaming):', '').replace('Answering:', '').strip()
+            op_type = op.get('operation_type', '')
+            if op_type == 'question_input':
+                metadata = op.get('metadata', {})
+                question = metadata.get('question', op.get('operation', 'N/A'))
                 if question and len(question) > 3:
                     questions.append({
                         'question': question,
                         'time': datetime.fromtimestamp(op.get('timestamp', 0)).strftime('%H:%M:%S'),
-                        'length': len(question)
+                        'length': metadata.get('question_length', len(question)),
+                        'streaming': metadata.get('streaming', False)
                     })
         return questions
 
@@ -701,10 +730,18 @@ class EmbeddingQueryMonitor(BaseMonitor):
         
         # Update stats
         self.widgets['total'].config(text=str(len(embeddings)))
-        self.widgets['avg_time'].config(text="~0.050s" if embeddings else "0.000s")
+        if embeddings:
+            avg_time = sum(e.get('time_ms', 0) for e in embeddings) / len(embeddings)
+            self.widgets['avg_time'].config(text=f"{avg_time/1000:.3f}s")
+        else:
+            self.widgets['avg_time'].config(text="0.000s")
         
         # Update display
-        self._update_display_if_changed(embeddings, lambda e: [f"[{e['time']}] {e['operation']}"])
+        self._update_display_if_changed(embeddings, lambda e: [
+            f"[{e['time']}] {e['query'][:60]}...",
+            f"  → Model: {e['model']}, Dim: {e['dim']}, Device: {e['device']}",
+            ""
+        ])
     
     def _update_device_status(self):
         """Check and update GPU/CPU status"""
@@ -720,10 +757,15 @@ class EmbeddingQueryMonitor(BaseMonitor):
         """Extract embedding data from operations"""
         embeddings = []
         for op in operations:
-            op_text = op.get('operation', '')
-            if 'Searching:' in op_text or 'Answering' in op_text:
+            op_type = op.get('operation_type', '')
+            if op_type == 'embedding_query':
+                metadata = op.get('metadata', {})
                 embeddings.append({
-                    'operation': op_text[:60] + "..." if len(op_text) > 60 else op_text,
+                    'query': metadata.get('query', 'N/A'),
+                    'model': metadata.get('model', 'unknown'),
+                    'dim': metadata.get('dimensions', 0),
+                    'device': metadata.get('device', 'unknown'),
+                    'time_ms': metadata.get('search_time_ms', 0),
                     'time': datetime.fromtimestamp(op.get('timestamp', 0)).strftime('%H:%M:%S')
                 })
         return embeddings
@@ -763,13 +805,19 @@ class FAISSSearchMonitor(BaseMonitor):
         
         # Update stats
         self.widgets['total_searches'].config(text=str(len(searches)))
-        self.widgets['avg_results'].config(text="~15" if searches else "0")
-        self.widgets['avg_time'].config(text="~0.025s" if searches else "0.000s")
+        if searches:
+            avg_results = sum(s.get('num_results', 0) for s in searches) / len(searches)
+            avg_time = sum(s.get('time_ms', 0) for s in searches) / len(searches)
+            self.widgets['avg_results'].config(text=f"{avg_results:.0f}")
+            self.widgets['avg_time'].config(text=f"{avg_time/1000:.3f}s")
+        else:
+            self.widgets['avg_results'].config(text="0")
+            self.widgets['avg_time'].config(text="0.000s")
         
         # Update display
         self._update_display_if_changed(searches, lambda s: [
-            f"[{s['time']}] Query: {s['query']}...",
-            "  → K=100, Searching index...",
+            f"[{s['time']}] Query: {s['query'][:50]}...",
+            f"  → K={s['k']}, Results={s['num_results']}, Index={s['index_size']}, Time={s['time_ms']:.2f}ms",
             ""
         ])
     
@@ -798,11 +846,16 @@ class FAISSSearchMonitor(BaseMonitor):
         """Extract search data from operations"""
         searches = []
         for op in operations:
-            op_text = op.get('operation', '')
-            if 'Searching:' in op_text or 'Answering' in op_text:
-                query = op_text.replace('Searching:', '').replace('Answering (streaming):', '').replace('Answering:', '').strip()[:50]
+            op_type = op.get('operation_type', '')
+            if op_type == 'faiss_search':
+                metadata = op.get('metadata', {})
                 searches.append({
-                    'query': query,
+                    'query': metadata.get('query', 'N/A'),
+                    'k': metadata.get('k', 100),
+                    'num_results': metadata.get('num_results', 0),
+                    'index_size': metadata.get('index_size', 0),
+                    'time_ms': metadata.get('search_time_ms', 0),
+                    'device': metadata.get('device', 'unknown'),
                     'time': datetime.fromtimestamp(op.get('timestamp', 0)).strftime('%H:%M:%S')
                 })
         return searches

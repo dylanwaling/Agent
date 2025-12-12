@@ -7,8 +7,10 @@ Clean document processing pipeline using Docling → LangChain → Search
 import os
 import logging
 import json
+import time
+from datetime import datetime
 from pathlib import Path
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 # Core imports
 from docling.document_converter import DocumentConverter
@@ -46,21 +48,58 @@ class DocumentPipeline:
         # Initialize components
         self._init_components()
         
-    def _update_status(self, status: str, operation: str):
-        """Update status file for live monitoring - atomic write with proper flushing"""
+    def _log_operation(self, operation_type: str, operation: str, metadata: Optional[Dict] = None, status: str = "THINKING"):
+        """
+        Comprehensive logging system for all pipeline operations
+        
+        Args:
+            operation_type: Type of operation (question_input, embedding_query, faiss_search, etc.)
+            operation: Human-readable operation description
+            metadata: Additional structured data for the operation
+            status: Current pipeline status (THINKING, IDLE, ERROR, PROCESSING)
+        """
         try:
-            import time
-            import tempfile
-            
-            # Create unique operation ID
             timestamp = time.time()
-            operation_id = f"{status}_{timestamp}"
+            operation_id = f"{operation_type}_{timestamp}"
             
+            # Standardized log entry with rich metadata
+            log_entry = {
+                "timestamp": timestamp,
+                "datetime": datetime.fromtimestamp(timestamp).isoformat(),
+                "operation_type": operation_type,
+                "operation": operation,
+                "operation_id": operation_id,
+                "status": status,
+                "metadata": metadata or {}
+            }
+            
+            # Write to operation history (JSONL format for easy parsing)
+            history_file = self.status_file.parent / "operation_history.jsonl"
+            history_file.parent.mkdir(parents=True, exist_ok=True)
+            
+            with open(history_file, 'a', encoding='utf-8') as f:
+                f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
+                f.flush()
+                os.fsync(f.fileno())
+            
+            # Also update current status for real-time monitoring
+            self._update_status_only(status, operation, metadata)
+            
+            logger.debug(f"[{operation_type.upper()}] {operation[:80]}")
+            
+        except Exception as e:
+            logger.error(f"Failed to log operation: {e}")
+    
+    def _update_status_only(self, status: str, operation: str, metadata: Optional[Dict] = None):
+        """Update status file only (used internally by _log_operation)"""
+        try:
+            timestamp = time.time()
             status_data = {
                 "status": status,
                 "operation": operation,
                 "timestamp": timestamp,
-                "operation_id": operation_id
+                "operation_id": f"{status}_{timestamp}",
+                "metadata": metadata or {}
             }
             
             # Ensure directory exists
@@ -82,26 +121,17 @@ class DocumentPipeline:
                 pass
             temp_file.rename(self.status_file)
             
-            # ALSO append to operation history log (this is what the monitor will read)
-            if status == "THINKING":
-                history_file = self.status_file.parent / "operation_history.jsonl"
-                with open(history_file, 'a', encoding='utf-8') as f:
-                    log_entry = {
-                        "timestamp": timestamp,
-                        "operation": operation,
-                        "operation_id": operation_id
-                    }
-                    f.write(json.dumps(log_entry) + '\n')
-                    f.flush()
-                    os.fsync(f.fileno())
-            
-            # Print to console for debugging
-            print(f"[STATUS UPDATE] {status}: {operation[:60]}", flush=True)
-            
         except Exception as e:
             logger.error(f"Failed to update status: {e}")
-            import traceback
-            traceback.print_exc()
+    
+    def _update_status(self, status: str, operation: str, metadata: Optional[Dict] = None):
+        """Backward compatibility wrapper - use _log_operation for new code"""
+        self._log_operation(
+            operation_type="general",
+            operation=operation,
+            metadata=metadata,
+            status=status
+        )
     
     def _init_components(self):
         """Initialize processing components"""
@@ -196,7 +226,15 @@ Complete Answer:"""
         
     def process_documents(self) -> bool:
         """Process all documents and build index"""
-        self._update_status("THINKING", "Processing documents...")
+        process_start = time.time()
+        
+        self._log_operation(
+            operation_type="document_processing_start",
+            operation="Starting document processing pipeline",
+            metadata={},
+            status="PROCESSING"
+        )
+        
         try:
             documents = []
             doc_files = list(self.docs_dir.iterdir())
@@ -214,8 +252,21 @@ Complete Answer:"""
                     continue
                     
                 try:
+                    file_start = time.time()
                     # Convert document with Docling
                     logger.info(f"Processing: {doc_file.name}")
+                    
+                    # Log file upload
+                    self._log_operation(
+                        operation_type="file_upload",
+                        operation=f"Processing file: {doc_file.name}",
+                        metadata={
+                            "filename": doc_file.name,
+                            "file_size_bytes": doc_file.stat().st_size,
+                            "file_type": doc_file.suffix.lower()
+                        },
+                        status="PROCESSING"
+                    )
                     
                     # Handle different file types
                     if doc_file.suffix.lower() in ['.txt', '.md']:
@@ -225,8 +276,22 @@ Complete Answer:"""
                     else:
                         # Use Docling for other formats (PDF, DOCX, images) with timeout protection
                         try:
+                            parse_start = time.time()
                             result = self.converter.convert(str(doc_file))
                             text = result.document.export_to_markdown()
+                            parse_time = time.time() - parse_start
+                            
+                            # Log Docling parsing
+                            self._log_operation(
+                                operation_type="docling_parse",
+                                operation=f"Parsed: {doc_file.name}",
+                                metadata={
+                                    "filename": doc_file.name,
+                                    "parse_time_s": round(parse_time, 3),
+                                    "extracted_length": len(text)
+                                },
+                                status="PROCESSING"
+                            )
                         except Exception as docling_error:
                             logger.error(f"Docling failed for {doc_file.name}: {docling_error}")
                             continue
@@ -236,7 +301,24 @@ Complete Answer:"""
                         continue
                     
                     # Create document chunks
+                    split_start = time.time()
                     chunks = self.text_splitter.split_text(text)
+                    split_time = time.time() - split_start
+                    
+                    # Log text splitting
+                    self._log_operation(
+                        operation_type="text_splitting",
+                        operation=f"Split text: {doc_file.name}",
+                        metadata={
+                            "filename": doc_file.name,
+                            "original_length": len(text),
+                            "num_chunks": len(chunks),
+                            "split_time_s": round(split_time, 3),
+                            "chunk_size": getattr(self.text_splitter, '_chunk_size', 1000),
+                            "chunk_overlap": getattr(self.text_splitter, '_chunk_overlap', 200)
+                        },
+                        status="PROCESSING"
+                    )
                     
                     for i, chunk in enumerate(chunks):
                         if chunk.strip():  # Only add non-empty chunks
@@ -255,8 +337,9 @@ Complete Answer:"""
                             )
                             documents.append(doc)
                     
+                    file_time = time.time() - file_start
                     processed_count += 1
-                    logger.info(f"✅ Successfully processed {doc_file.name}")
+                    logger.info(f"✅ Successfully processed {doc_file.name} in {file_time:.2f}s")
                             
                 except Exception as e:
                     logger.error(f"Error processing {doc_file.name}: {e}")
@@ -271,7 +354,36 @@ Complete Answer:"""
             
             # Build vector store with GPU support
             try:
+                # Log embedding generation
+                embed_gen_start = time.time()
+                self._log_operation(
+                    operation_type="embedding_generation",
+                    operation=f"Generating embeddings for {len(documents)} chunks",
+                    metadata={
+                        "num_documents": len(documents),
+                        "model": "all-MiniLM-L6-v2",
+                        "dimensions": 384,
+                        "device": getattr(self, 'device', 'cpu')
+                    },
+                    status="PROCESSING"
+                )
+                
                 self.vectorstore = FAISS.from_documents(documents, self.embeddings)
+                embed_gen_time = time.time() - embed_gen_start
+                
+                # Log FAISS indexing
+                self._log_operation(
+                    operation_type="faiss_indexing",
+                    operation=f"Built FAISS index with {len(documents)} vectors",
+                    metadata={
+                        "num_vectors": len(documents),
+                        "embedding_time_s": round(embed_gen_time, 3),
+                        "vectors_per_second": round(len(documents) / embed_gen_time, 2) if embed_gen_time > 0 else 0,
+                        "index_size": self.vectorstore.index.ntotal,
+                        "device": getattr(self, 'device', 'cpu')
+                    },
+                    status="PROCESSING"
+                )
                 
                 # Move to GPU if available (with memory management for 6GB GPUs)
                 if hasattr(self, 'device') and self.device == "cuda":
@@ -302,12 +414,41 @@ Complete Answer:"""
                                 pass
                 
                 # Save index
+                save_start = time.time()
                 index_path = str(self.index_dir / "faiss_index")
                 self.vectorstore.save_local(index_path)
-                logger.info(f"Saved index to {index_path}")
+                save_time = time.time() - save_start
                 
-                logger.info("Document processing complete!")
-                self._update_status("IDLE", "Document processing complete")
+                # Log index storage
+                index_file = Path(index_path) / "index.faiss"
+                index_size_mb = index_file.stat().st_size / (1024 * 1024) if index_file.exists() else 0
+                
+                self._log_operation(
+                    operation_type="index_storage",
+                    operation=f"Saved FAISS index to disk",
+                    metadata={
+                        "index_path": index_path,
+                        "index_size_mb": round(index_size_mb, 2),
+                        "save_time_s": round(save_time, 3),
+                        "num_vectors": self.vectorstore.index.ntotal
+                    },
+                    status="PROCESSING"
+                )
+                
+                process_time = time.time() - process_start
+                logger.info(f"Document processing complete in {process_time:.2f}s!")
+                
+                self._log_operation(
+                    operation_type="document_processing_complete",
+                    operation=f"Processed {processed_count} documents successfully",
+                    metadata={
+                        "num_files": processed_count,
+                        "num_chunks": len(documents),
+                        "total_time_s": round(process_time, 3)
+                    },
+                    status="IDLE"
+                )
+                
                 return True
                 
             except Exception as vector_error:
@@ -358,15 +499,45 @@ Complete Answer:"""
     
     def search(self, query: str, score_threshold: float = 1.25, update_status: bool = True) -> List[Dict[str, Any]]:
         """Search documents with relevance-based filtering"""
-        if update_status:
-            self._update_status("THINKING", f"Searching: {query[:50]}...")
+        search_start = time.time()
         
         try:
             if not self.vectorstore:
                 return []
-                
+            
+            # Log embedding query
+            embed_start = time.time()
+            self._log_operation(
+                operation_type="embedding_query",
+                operation=f"Embedding query: {query[:80]}",
+                metadata={
+                    "query": query,
+                    "query_length": len(query),
+                    "model": "all-MiniLM-L6-v2",
+                    "dimensions": 384,
+                    "device": getattr(self, 'device', 'cpu')
+                },
+                status="PROCESSING"
+            )
+            
             # Use similarity search with score threshold for smart retrieval
             docs_with_scores = self.vectorstore.similarity_search_with_score(query, k=100)
+            embed_time = time.time() - embed_start
+            
+            # Log FAISS search
+            self._log_operation(
+                operation_type="faiss_search",
+                operation=f"FAISS search: {query[:80]}",
+                metadata={
+                    "query": query,
+                    "k": 100,
+                    "num_results": len(docs_with_scores),
+                    "index_size": self.vectorstore.index.ntotal if self.vectorstore else 0,
+                    "search_time_ms": round(embed_time * 1000, 2),
+                    "device": getattr(self, 'device', 'cpu')
+                },
+                status="PROCESSING"
+            )
             
             # Smart filtering with filename priority
             relevant_docs = []
@@ -421,21 +592,48 @@ Complete Answer:"""
                     "relevance_score": score
                 })
             
+            search_time = time.time() - search_start
+            
+            # Log relevance filtering results
+            self._log_operation(
+                operation_type="relevance_filter",
+                operation=f"Filtered search results: {query[:80]}",
+                metadata={
+                    "query": query,
+                    "total_candidates": len(docs_with_scores),
+                    "filtered_results": len(results),
+                    "score_threshold": score_threshold,
+                    "filter_time_s": round(search_time, 3)
+                },
+                status="IDLE" if update_status else "PROCESSING"
+            )
+            
             return results
             
         except Exception as e:
             logger.error(f"Error searching: {e}")
+            self._log_operation(
+                operation_type="error",
+                operation=f"Search error: {str(e)[:100]}",
+                metadata={
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
+                },
+                status="ERROR"
+            )
             return []
-        finally:
-            # Only return to IDLE if we were controlling status
-            if update_status:
-                self._update_status("IDLE", "Search complete")
     
     def ask(self, question: str) -> Dict[str, Any]:
         """Ask a question about the documents using enhanced search logic"""
-        self._update_status("THINKING", f"Answering: {question[:50]}...")
-        import time
         start_time = time.time()
+        
+        # Log the incoming question
+        self._log_operation(
+            operation_type="question_input",
+            operation=f"Question: {question[:100]}",
+            metadata={"question": question, "question_length": len(question)},
+            status="THINKING"
+        )
         
         try:
             if not self.vectorstore:
@@ -487,23 +685,86 @@ Complete Answer:"""
             
             # Combine context with larger length limit for comprehensive answers
             context = "\n\n".join(context_parts)
+            context_truncated = False
             if len(context) > 3500:  # Much larger context for complete information
                 context = context[:3500] + "..."
+                context_truncated = True
                 
             context_time = time.time() - context_start
+            
+            # Log context building
+            self._log_operation(
+                operation_type="context_builder",
+                operation=f"Built context for: {question[:60]}",
+                metadata={
+                    "question": question,
+                    "num_sources": len(sources),
+                    "context_length": len(context),
+                    "context_truncated": context_truncated,
+                    "build_time_s": round(context_time, 3)
+                },
+                status="PROCESSING"
+            )
+            
             logger.info(f"Context preparation completed in {context_time:.3f} seconds")
             
             # Generate answer using LangChain Ollama LLM
             logger.info(f"Sending prompt to LLM (context length: {len(context)} chars)")
             llm_start = time.time()
             prompt = self.prompt_template.format(context=context, question=question)
+            
+            # Log prompt assembly
+            self._log_operation(
+                operation_type="prompt_assembly",
+                operation=f"Prompt assembled for: {question[:60]}",
+                metadata={
+                    "question": question,
+                    "context_length": len(context),
+                    "prompt_length": len(prompt),
+                    "num_sources": len(sources),
+                    "model": self.model_name
+                },
+                status="PROCESSING"
+            )
+            
             logger.info(f"Prompt formatted ({len(prompt)} chars), calling LLM...")
             answer = self.llm.invoke(prompt)
             llm_time = time.time() - llm_start
+            
+            # Log LLM generation
+            self._log_operation(
+                operation_type="llm_generation",
+                operation=f"LLM response for: {question[:60]}",
+                metadata={
+                    "question": question,
+                    "model": self.model_name,
+                    "response_length": len(answer),
+                    "generation_time_s": round(llm_time, 3),
+                    "tokens_per_second": round(len(answer.split()) / llm_time, 2) if llm_time > 0 else 0
+                },
+                status="PROCESSING"
+            )
+            
             logger.info(f"LLM response received in {llm_time:.3f} seconds")
             
             total_time = time.time() - start_time
             logger.info(f"Total ask() time: {total_time:.3f} seconds (search: {search_time:.3f}s, context: {context_time:.3f}s, llm: {llm_time:.3f}s)")
+            
+            # Log complete response
+            self._log_operation(
+                operation_type="response_complete",
+                operation=f"Response complete for: {question[:60]}",
+                metadata={
+                    "question": question,
+                    "total_time_s": round(total_time, 3),
+                    "search_time_s": round(search_time, 3),
+                    "context_time_s": round(context_time, 3),
+                    "llm_time_s": round(llm_time, 3),
+                    "answer_length": len(answer),
+                    "num_sources": len(sources)
+                },
+                status="IDLE"
+            )
             
             return {
                 "answer": answer,
@@ -512,17 +773,36 @@ Complete Answer:"""
             
         except Exception as e:
             logger.error(f"Error asking question: {e}")
+            
+            # Log error
+            self._log_operation(
+                operation_type="error",
+                operation=f"Error processing question: {str(e)[:100]}",
+                metadata={
+                    "question": question,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
+                },
+                status="ERROR"
+            )
+            
             return {
                 "answer": f"Error processing question: {e}",
                 "sources": []
             }
-        finally:
-            # Always return to IDLE
-            self._update_status("IDLE", "Answer complete")
 
     def ask_streaming(self, question: str):
         """Same as ask() but yields tokens as they're generated"""
-        self._update_status("THINKING", f"Answering (streaming): {question[:40]}...")
+        stream_start = time.time()
+        
+        # Log streaming question
+        self._log_operation(
+            operation_type="question_input",
+            operation=f"Question (streaming): {question[:100]}",
+            metadata={"question": question, "question_length": len(question), "streaming": True},
+            status="THINKING"
+        )
+        
         try:
             if not self.vectorstore:
                 yield "No documents processed yet. Please process documents first."
@@ -558,16 +838,51 @@ Complete Answer:"""
             if len(context) > 3500:  # Match the ask() method's larger limit
                 context = context[:3500] + "..."
             
+            # Log streaming start
+            self._log_operation(
+                operation_type="response_stream_start",
+                operation=f"Starting stream for: {question[:60]}",
+                metadata={
+                    "question": question,
+                    "num_sources": len(sources),
+                    "context_length": len(context)
+                },
+                status="PROCESSING"
+            )
+            
             # Stream the response word by word
             prompt = self.prompt_template.format(context=context, question=question)
+            token_count = 0
             for token in self.llm.stream(prompt):
+                token_count += 1
                 yield token
+            
+            stream_time = time.time() - stream_start
+            
+            # Log streaming complete
+            self._log_operation(
+                operation_type="response_stream_complete",
+                operation=f"Stream complete for: {question[:60]}",
+                metadata={
+                    "question": question,
+                    "stream_time_s": round(stream_time, 3),
+                    "token_count": token_count
+                },
+                status="IDLE"
+            )
                 
         except Exception as e:
+            self._log_operation(
+                operation_type="error",
+                operation=f"Streaming error: {str(e)[:100]}",
+                metadata={
+                    "question": question,
+                    "error_type": type(e).__name__,
+                    "error_message": str(e)
+                },
+                status="ERROR"
+            )
             yield f"Error processing question: {e}"
-        finally:
-            # Always return to IDLE after streaming
-            self._update_status("IDLE", "Streaming complete")
 
     def process_single_document(self, file_path: Path) -> bool:
         """Process a single document and add it to existing vectorstore"""
