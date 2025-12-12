@@ -118,10 +118,29 @@ class BaseMonitor:
                 pass
         
         # Multiple attempts with increasing delays
-        self.gui.root.after(10, scroll)
-        self.gui.root.after(50, scroll)
-        self.gui.root.after(150, scroll)
-        self.gui.root.after(300, scroll)
+        for delay in [10, 50, 150, 300]:
+            self.gui.root.after(delay, scroll)
+    
+    def _update_display_if_changed(self, items, format_func, max_display=50):
+        """Generic method to update text display when item count changes"""
+        if len(items) > self.last_count:
+            if self.last_count == 0 or len(items) < self.last_count:
+                # Full refresh
+                self.text_widget.config(state=tk.NORMAL)
+                self.text_widget.delete(1.0, tk.END)
+                self.text_widget.config(state=tk.DISABLED)
+                new_lines = []
+                for item in items[-max_display:]:
+                    new_lines.extend(format_func(item))
+                self.update_text_widget(self.text_widget, new_lines)
+            else:
+                # Incremental update
+                new_lines = []
+                for item in items[self.last_count:]:
+                    new_lines.extend(format_func(item))
+                self.update_text_widget(self.text_widget, new_lines)
+            
+            self.last_count = len(items)
     
     def show(self):
         """Override this method in subclasses"""
@@ -604,45 +623,23 @@ class QuestionInputMonitor(BaseMonitor):
         row = self.add_back_button()
         row = self.add_title("QUESTION INPUT MONITOR", row)
         
-        # Question Stats
         row = self.add_stat_frame("QUESTION STATISTICS", [
             ("Total Questions", "total", "0"),
             ("Avg Question Length", "avg_length", "0 chars"),
             ("Last Question", "last", "N/A")
         ], row)
         
-        # Recent Questions
         self.text_widget, row = self.add_scrollable_text("RECENT QUESTIONS", 15, row)
-        
-        # Force scroll to bottom after widget creation
         self._schedule_scroll_to_bottom()
     
     def update(self):
         all_operations = self.gui.load_operation_history()
-        
-        # Filter for question/search operations
-        questions = []
-        total_length = 0
-        for op in all_operations:
-            op_text = op.get('operation', '')
-            if 'Searching:' in op_text or 'Answering' in op_text:
-                # Extract question text
-                question = op_text.replace('Searching:', '').replace('Answering (streaming):', '').replace('Answering:', '').strip()
-                
-                if question and len(question) > 3:
-                    timestamp = op.get('timestamp', 0)
-                    time_str = datetime.fromtimestamp(timestamp).strftime('%H:%M:%S')
-                    questions.append({
-                        'question': question,
-                        'time': time_str,
-                        'length': len(question)
-                    })
-                    total_length += len(question)
+        questions = self._extract_questions(all_operations)
         
         # Update stats
         self.widgets['total'].config(text=str(len(questions)))
-        
         if questions:
+            total_length = sum(q['length'] for q in questions)
             avg_length = total_length / len(questions)
             self.widgets['avg_length'].config(text=f"{avg_length:.0f} chars")
             last_q = questions[-1]['question']
@@ -651,29 +648,27 @@ class QuestionInputMonitor(BaseMonitor):
             self.widgets['avg_length'].config(text="0 chars")
             self.widgets['last'].config(text="N/A")
         
-        # Update text widget with new questions
-        if len(questions) > self.last_count:
-            if self.last_count == 0 or len(questions) < self.last_count:
-                # Full refresh - clear and show last 50
-                self.text_widget.config(state=tk.NORMAL)
-                self.text_widget.delete(1.0, tk.END)
-                self.text_widget.config(state=tk.DISABLED)
-                new_lines = []
-                for q in questions[-50:]:
-                    new_lines.append(f"[{q['time']}] ({q['length']} chars)")
-                    new_lines.append(f"  {q['question']}")
-                    new_lines.append("")
-                self.update_text_widget(self.text_widget, new_lines)
-            else:
-                # Incremental update
-                new_lines = []
-                for q in questions[self.last_count:]:
-                    new_lines.append(f"[{q['time']}] ({q['length']} chars)")
-                    new_lines.append(f"  {q['question']}")
-                    new_lines.append("")
-                self.update_text_widget(self.text_widget, new_lines)
-            
-            self.last_count = len(questions)
+        # Update display
+        self._update_display_if_changed(questions, lambda q: [
+            f"[{q['time']}] ({q['length']} chars)",
+            f"  {q['question']}",
+            ""
+        ])
+    
+    def _extract_questions(self, operations):
+        """Extract question data from operations"""
+        questions = []
+        for op in operations:
+            op_text = op.get('operation', '')
+            if 'Searching:' in op_text or 'Answering' in op_text:
+                question = op_text.replace('Searching:', '').replace('Answering (streaming):', '').replace('Answering:', '').strip()
+                if question and len(question) > 3:
+                    questions.append({
+                        'question': question,
+                        'time': datetime.fromtimestamp(op.get('timestamp', 0)).strftime('%H:%M:%S'),
+                        'length': len(question)
+                    })
+        return questions
 
 
 
@@ -685,69 +680,53 @@ class EmbeddingQueryMonitor(BaseMonitor):
         row = self.add_back_button()
         row = self.add_title("EMBEDDING QUERY MONITOR", row)
         
-        # Model Info
         row = self.add_stat_frame("EMBEDDING MODEL", [
             ("Model", "model", "sentence-transformers/all-MiniLM-L6-v2"),
             ("Vector Dimension", "dim", "384"),
             ("Device", "device", "Checking...")
         ], row)
         
-        # Embedding Stats
         row = self.add_stat_frame("EMBEDDING STATISTICS", [
             ("Total Embeddings", "total", "0"),
             ("Avg Time", "avg_time", "0.000s")
         ], row)
         
-        # Recent Embeddings
         self.text_widget, row = self.add_scrollable_text("RECENT EMBEDDING OPERATIONS", 10, row)
-        
-        # Force scroll to bottom after widget creation
         self._schedule_scroll_to_bottom()
     
     def update(self):
-        # Check device
-        try:
-            import torch
-            if torch.cuda.is_available():
-                self.widgets['device'].config(text="CUDA (GPU)", foreground="#4ec9b0")
-            else:
-                self.widgets['device'].config(text="CPU", foreground="#dcdcaa")
-        except:
-            self.widgets['device'].config(text="CPU", foreground="#dcdcaa")
-        
+        self._update_device_status()
         all_operations = self.gui.load_operation_history()
-        
-        # Filter for embedding operations
-        embeddings = []
-        for op in all_operations:
-            op_text = op.get('operation', '')
-            if 'Searching:' in op_text or 'Answering' in op_text:
-                timestamp = op.get('timestamp', 0)
-                time_str = datetime.fromtimestamp(timestamp).strftime('%H:%M:%S')
-                embeddings.append({
-                    'operation': op_text[:60] + "..." if len(op_text) > 60 else op_text,
-                    'time': time_str
-                })
+        embeddings = self._extract_embeddings(all_operations)
         
         # Update stats
         self.widgets['total'].config(text=str(len(embeddings)))
-        self.widgets['avg_time'].config(text="~0.050s" if len(embeddings) > 0 else "0.000s")
+        self.widgets['avg_time'].config(text="~0.050s" if embeddings else "0.000s")
         
-        # Update text widget
-        if len(embeddings) > self.last_count:
-            if self.last_count == 0 or len(embeddings) < self.last_count:
-                # Full refresh - show last 50
-                self.text_widget.config(state=tk.NORMAL)
-                self.text_widget.delete(1.0, tk.END)
-                self.text_widget.config(state=tk.DISABLED)
-                new_lines = [f"[{emb['time']}] {emb['operation']}" for emb in embeddings[-50:]]
-                self.update_text_widget(self.text_widget, new_lines)
-            else:
-                # Incremental update
-                new_lines = [f"[{emb['time']}] {emb['operation']}" for emb in embeddings[self.last_count:]]
-                self.update_text_widget(self.text_widget, new_lines)
-            
-            self.last_count = len(embeddings)
+        # Update display
+        self._update_display_if_changed(embeddings, lambda e: [f"[{e['time']}] {e['operation']}"])
+    
+    def _update_device_status(self):
+        """Check and update GPU/CPU status"""
+        try:
+            import torch
+            device = "CUDA (GPU)" if torch.cuda.is_available() else "CPU"
+            color = "#4ec9b0" if torch.cuda.is_available() else "#dcdcaa"
+            self.widgets['device'].config(text=device, foreground=color)
+        except:
+            self.widgets['device'].config(text="CPU", foreground="#dcdcaa")
+    
+    def _extract_embeddings(self, operations):
+        """Extract embedding data from operations"""
+        embeddings = []
+        for op in operations:
+            op_text = op.get('operation', '')
+            if 'Searching:' in op_text or 'Answering' in op_text:
+                embeddings.append({
+                    'operation': op_text[:60] + "..." if len(op_text) > 60 else op_text,
+                    'time': datetime.fromtimestamp(op.get('timestamp', 0)).strftime('%H:%M:%S')
+                })
+        return embeddings
     
 
 
@@ -761,14 +740,12 @@ class FAISSSearchMonitor(BaseMonitor):
         row = self.add_back_button()
         row = self.add_title("FAISS SEARCH MONITOR", row)
         
-        # Index Info
         row = self.add_stat_frame("INDEX INFORMATION", [
             ("Index Status", "index_status", "Checking..."),
             ("Total Vectors", "vector_count", "0"),
             ("Index Size", "index_size", "0 KB")
         ], row)
         
-        # Search Stats
         row = self.add_stat_frame("SEARCH STATISTICS", [
             ("Total Searches", "total_searches", "0"),
             ("K Value", "k_value", "100"),
@@ -776,21 +753,34 @@ class FAISSSearchMonitor(BaseMonitor):
             ("Avg Search Time", "avg_time", "0.000s")
         ], row)
         
-        # Recent Searches
         self.text_widget, row = self.add_scrollable_text("RECENT SEARCH OPERATIONS", 10, row)
-        
-        # Force scroll to bottom after widget creation
         self._schedule_scroll_to_bottom()
     
     def update(self):
-        # Check index status
+        self._update_index_status()
+        all_operations = self.gui.load_operation_history()
+        searches = self._extract_searches(all_operations)
+        
+        # Update stats
+        self.widgets['total_searches'].config(text=str(len(searches)))
+        self.widgets['avg_results'].config(text="~15" if searches else "0")
+        self.widgets['avg_time'].config(text="~0.025s" if searches else "0.000s")
+        
+        # Update display
+        self._update_display_if_changed(searches, lambda s: [
+            f"[{s['time']}] Query: {s['query']}...",
+            "  → K=100, Searching index...",
+            ""
+        ])
+    
+    def _update_index_status(self):
+        """Check and update FAISS index status"""
         index_path = "data/index/faiss_index/index.faiss"
         if os.path.exists(index_path):
-            index_size = os.path.getsize(index_path) / 1024  # KB
+            index_size = os.path.getsize(index_path) / 1024
             self.widgets['index_status'].config(text="Loaded", foreground="#4ec9b0")
             self.widgets['index_size'].config(text=f"{index_size:.1f} KB")
             
-            # Try to get vector count
             try:
                 if self.gui.pipeline and self.gui.pipeline.vectorstore:
                     vector_count = self.gui.pipeline.vectorstore.index.ntotal
@@ -803,54 +793,19 @@ class FAISSSearchMonitor(BaseMonitor):
             self.widgets['index_status'].config(text="Not Found", foreground="#f48771")
             self.widgets['index_size'].config(text="0 KB")
             self.widgets['vector_count'].config(text="0")
-        
-        # Load operation history for search operations
-        all_operations = self.gui.load_operation_history()
-        
-        # Filter for search operations
+    
+    def _extract_searches(self, operations):
+        """Extract search data from operations"""
         searches = []
-        for op in all_operations:
+        for op in operations:
             op_text = op.get('operation', '')
             if 'Searching:' in op_text or 'Answering' in op_text:
-                timestamp = op.get('timestamp', 0)
-                time_str = datetime.fromtimestamp(timestamp).strftime('%H:%M:%S')
-                
-                # Extract query text
                 query = op_text.replace('Searching:', '').replace('Answering (streaming):', '').replace('Answering:', '').strip()[:50]
-                
                 searches.append({
                     'query': query,
-                    'time': time_str
+                    'time': datetime.fromtimestamp(op.get('timestamp', 0)).strftime('%H:%M:%S')
                 })
-        
-        # Update stats
-        self.widgets['total_searches'].config(text=str(len(searches)))
-        self.widgets['avg_results'].config(text="~15" if searches else "0")
-        self.widgets['avg_time'].config(text="~0.025s" if searches else "0.000s")
-        
-        # Update text widget
-        if len(searches) > self.last_count:
-            if self.last_count == 0 or len(searches) < self.last_count:
-                # Full refresh - show last 50
-                self.text_widget.config(state=tk.NORMAL)
-                self.text_widget.delete(1.0, tk.END)
-                self.text_widget.config(state=tk.DISABLED)
-                new_lines = []
-                for search in searches[-50:]:
-                    new_lines.append(f"[{search['time']}] Query: {search['query']}...")
-                    new_lines.append(f"  → K=100, Searching index...")
-                    new_lines.append("")
-                self.update_text_widget(self.text_widget, new_lines)
-            else:
-                # Incremental update
-                new_lines = []
-                for search in searches[self.last_count:]:
-                    new_lines.append(f"[{search['time']}] Query: {search['query']}...")
-                    new_lines.append(f"  → K=100, Searching index...")
-                    new_lines.append("")
-                self.update_text_widget(self.text_widget, new_lines)
-            
-            self.last_count = len(searches)
+        return searches
 
 
 # ============================================================================
