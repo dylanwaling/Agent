@@ -4,21 +4,30 @@ Comprehensive Testing and Debugging
 Combined testing for document processing, search, Q&A functionality, and system checks
 """
 
+# ============================================================================
+# CONSTANTS & IMPORTS
+# ============================================================================
+
+# Standard library imports
 import sys
 import os
 import tempfile
 import time
 import json
-import psutil
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
-sys.path.append(str(Path(__file__).parent))
 
+# Third-party imports
+import psutil
+
+# Local imports
+sys.path.append(str(Path(__file__).parent))
 from backend_logic import DocumentPipeline
 
+
 # ============================================================================
-# PERFORMANCE MONITORING CLASSES
+# DATA MODELS & CLASSES
 # ============================================================================
 
 @dataclass
@@ -171,8 +180,9 @@ class PerformanceMonitor:
         
         print(f"📊 Metrics exported to: {filepath}")
 
+
 # ============================================================================
-# TESTING FUNCTIONS
+# CORE LOGIC - SYSTEM TESTING
 # ============================================================================
 
 def test_system_components():
@@ -285,6 +295,11 @@ def test_system_components():
     
     return success_count >= len(components) - 1  # Allow one failure
 
+# ============================================================================
+# CORE LOGIC - DATABASE INSPECTION
+# ============================================================================
+
+
 def inspect_database_content():
     """Inspect the content of documents in the database"""
     print("\n🔍 Database Content Inspector")
@@ -326,6 +341,11 @@ def inspect_database_content():
         else:
             print("❌ No FAISS index found")
         
+
+# ============================================================================
+# CORE LOGIC - PIPELINE TESTING
+# ============================================================================
+
         return False
             
     except Exception as e:
@@ -524,6 +544,11 @@ def test_qa_functionality(pipeline):
         try:
             result = pipeline.ask(question)
             
+
+# ============================================================================
+# CORE LOGIC - EDGE CASE TESTING
+# ============================================================================
+
             print(f"🤖 Answer: {result['answer'][:300]}{'...' if len(result['answer']) > 300 else ''}")
             print(f"📚 Sources ({len(result['sources'])}):")
             
@@ -548,6 +573,11 @@ def test_edge_cases(pipeline):
     ]
     
     for case in edge_cases:
+
+# ============================================================================
+# ANALYTICS / REPORTING - PERFORMANCE TESTING
+# ============================================================================
+
         print(f"\n🧪 Edge case: '{case}'")
         print("-" * 30)
         
@@ -573,6 +603,11 @@ def run_performance_test(pipeline):
     test_query = "company handbook"
     iterations = 5
     
+
+# ============================================================================
+# ENTRY POINT
+# ============================================================================
+
     print(f"Running {iterations} iterations of search for '{test_query}'...")
     
     times = []
@@ -643,6 +678,7 @@ def main():
         # Performance test
         ctx = monitor.start_operation("run_performance_test")
         run_performance_test(pipeline)
+
         monitor.end_operation(ctx, success=True)
         
         print("\n🎉 All tests completed!")

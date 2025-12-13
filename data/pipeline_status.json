@@ -1,11 +1,13 @@
 {
   "status": "IDLE",
-  "operation": "Stream complete for: whats Invoice_Outline_-_Sheet1_1.pdf",
-  "timestamp": 1765669689.1463032,
-  "operation_id": "IDLE_1765669689.1463032",
+  "operation": "Filtered search results: company handbook",
+  "timestamp": 1765669985.5552208,
+  "operation_id": "IDLE_1765669985.5552208",
   "metadata": {
-    "question": "whats Invoice_Outline_-_Sheet1_1.pdf",
-    "stream_time_s": 1.4,
-    "token_count": 131
+    "query": "company handbook",
+    "total_candidates": 21,
+    "filtered_results": 14,
+    "score_threshold": 1.25,
+    "filter_time_s": 0.015
   }
 }
