@@ -4,6 +4,11 @@ Document Pipeline Module
 Clean document processing pipeline using Docling → LangChain → Search
 """
 
+# ============================================================================
+# CONSTANTS & IMPORTS
+# ============================================================================
+
+# Standard library imports
 import os
 import logging
 import json
@@ -12,15 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-# Import event bus for live monitoring
-try:
-    from backend_live import event_bus
-    LIVE_MONITORING_ENABLED = True
-except ImportError:
-    LIVE_MONITORING_ENABLED = False
-    event_bus = None
-
-# Core imports
+# Third-party imports
 from docling.document_converter import DocumentConverter
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -29,12 +26,37 @@ from langchain_ollama import OllamaLLM
 from langchain.schema import Document
 from langchain.prompts import PromptTemplate
 
-# Setup logging
+# Local imports - event bus for live monitoring
+try:
+    from backend_live import event_bus
+    LIVE_MONITORING_ENABLED = True
+except ImportError:
+    LIVE_MONITORING_ENABLED = False
+    event_bus = None
+
+# Logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+# ============================================================================
+# DATA MODELS & CLASSES
+# ============================================================================
+
 class DocumentPipeline:
-    """Clean document processing pipeline"""
+    """
+    Clean document processing pipeline using Docling → LangChain → Search.
+    
+    This class handles:
+    - Document ingestion and processing
+    - Vector embeddings and FAISS indexing
+    - Semantic search and question answering
+    - Real-time operation logging and monitoring
+    """
+    
+    # ------------------------------------------------------------------------
+    # Initialization
+    # ------------------------------------------------------------------------
     
     def __init__(self, 
                  docs_dir: str = "data/documents",
@@ -55,7 +77,11 @@ class DocumentPipeline:
         
         # Initialize components
         self._init_components()
-        
+    
+    # ------------------------------------------------------------------------
+    # Analytics & Logging Methods
+    # ------------------------------------------------------------------------
+    
     def _log_operation(self, operation_type: str, operation: str, metadata: Optional[Dict] = None, status: str = "THINKING"):
         """
         Comprehensive logging system for all pipeline operations
@@ -145,8 +171,23 @@ class DocumentPipeline:
             status=status
         )
     
+    # ------------------------------------------------------------------------
+    # Component Initialization
+    # ------------------------------------------------------------------------
+    
     def _init_components(self):
-        """Initialize processing components"""
+        """
+        Initialize all processing components.
+        
+        Sets up:
+        - GPU/CPU detection and optimization
+        - Document converter (Docling)
+        - Text splitter for chunking
+        - Embeddings model with hardware acceleration
+        - LLM for question answering
+        - Prompt template
+        - Vector store (loads existing index if available)
+        """
         
         # Check for GPU availability and optimize for hardware
         try:
@@ -235,9 +276,26 @@ Complete Answer:"""
         
         # Set status back to idle after initialization
         self._update_status("IDLE", "System ready")
-        
+    
+    # ------------------------------------------------------------------------
+    # Document Processing Methods
+    # ------------------------------------------------------------------------
+    
     def process_documents(self) -> bool:
-        """Process all documents and build index"""
+        """
+        Process all documents in the documents directory and build FAISS index.
+        
+        Workflow:
+        1. Scans documents directory for files
+        2. Converts documents to text (using Docling for PDFs/images)
+        3. Splits text into chunks
+        4. Generates embeddings
+        5. Builds FAISS vector store
+        6. Saves index to disk
+        
+        Returns:
+            True if processing successful, False otherwise
+        """
         process_start = time.time()
         
         self._log_operation(
@@ -471,8 +529,97 @@ Complete Answer:"""
             logger.error(f"Error processing documents: {e}")
             return False
     
+    def process_single_document(self, file_path: Path) -> bool:
+        """
+        Process a single document and add it to existing vectorstore.
+        
+        Args:
+            file_path: Path to the document file to process
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if not self.vectorstore:
+                logger.warning("No existing vectorstore - processing single document as new collection")
+                return self.process_documents()
+            
+            logger.info(f"Processing single document: {file_path.name}")
+            
+            # Process the single document
+            if file_path.suffix.lower() == '.md':
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                document = Document(
+                    page_content=content,
+                    metadata={"source": file_path.name}
+                )
+                documents = [document]
+                
+            elif file_path.suffix.lower() == '.txt':
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                document = Document(
+                    page_content=content,
+                    metadata={"source": file_path.name}
+                )
+                documents = [document]
+                
+            elif file_path.suffix.lower() == '.pdf':
+                from docling.document_converter import DocumentConverter
+                converter = DocumentConverter()
+                result = converter.convert(file_path)
+                
+                content = result.document.export_to_markdown()
+                document = Document(
+                    page_content=content,
+                    metadata={"source": file_path.name}
+                )
+                documents = [document]
+                
+            else:
+                logger.warning(f"Unsupported file type: {file_path.suffix}")
+                return False
+            
+            # Split into chunks
+            chunks = self.text_splitter.split_documents(documents)
+            
+            # Add filename prefix to chunks for better search
+            processed_chunks = []
+            for chunk in chunks:
+                chunk_content = f"{file_path.stem} {file_path.stem} {chunk.page_content}"
+                processed_chunk = Document(
+                    page_content=chunk_content,
+                    metadata=chunk.metadata
+                )
+                processed_chunks.append(processed_chunk)
+            
+            logger.info(f"Created {len(processed_chunks)} chunks from {file_path.name}")
+            
+            # Add to existing vectorstore
+            self.vectorstore.add_documents(processed_chunks)
+            
+            # Save updated index
+            index_path = str(self.index_dir / "faiss_index")
+            self.vectorstore.save_local(index_path)
+            logger.info(f"Updated index saved to {index_path}")
+            
+            logger.info(f"✅ Single document processed: {file_path.name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error processing single document {file_path}: {e}")
+            return False
+    
     def load_index(self) -> bool:
-        """Load existing index"""
+        """
+        Load existing FAISS index from disk.
+        
+        Returns:
+            True if index loaded successfully, False otherwise
+        """
         try:
             index_path = str(self.index_dir / "faiss_index")
             logger.info(f"Attempting to load index from: {index_path}")
@@ -509,8 +656,22 @@ Complete Answer:"""
             logger.error(f"Full traceback: {traceback.format_exc()}")
             return False
     
+    # ------------------------------------------------------------------------
+    # Search & Query Methods
+    # ------------------------------------------------------------------------
+    
     def search(self, query: str, score_threshold: float = 1.25, update_status: bool = True) -> List[Dict[str, Any]]:
-        """Search documents with relevance-based filtering"""
+        """
+        Search documents with relevance-based filtering.
+        
+        Args:
+            query: Search query text
+            score_threshold: Maximum distance score for relevance filtering (lower is better)
+            update_status: Whether to update status to IDLE after search
+            
+        Returns:
+            List of search results with content, source, chunk_id, and relevance_score
+        """
         search_start = time.time()
         
         try:
@@ -636,7 +797,15 @@ Complete Answer:"""
             return []
     
     def ask(self, question: str) -> Dict[str, Any]:
-        """Ask a question about the documents using enhanced search logic"""
+        """
+        Ask a question about the documents using enhanced search logic.
+        
+        Args:
+            question: Natural language question to answer
+            
+        Returns:
+            Dictionary containing 'answer' (string) and 'sources' (list of dicts)
+        """
         start_time = time.time()
         
         # Log the incoming question
@@ -804,7 +973,15 @@ Complete Answer:"""
             }
 
     def ask_streaming(self, question: str):
-        """Same as ask() but yields tokens as they're generated"""
+        """
+        Same as ask() but yields tokens as they're generated.
+        
+        Args:
+            question: Natural language question to answer
+            
+        Yields:
+            String tokens from the LLM response as they are generated
+        """
         stream_start = time.time()
         
         # Log streaming question
@@ -895,85 +1072,17 @@ Complete Answer:"""
                 status="ERROR"
             )
             yield f"Error processing question: {e}"
-
-    def process_single_document(self, file_path: Path) -> bool:
-        """Process a single document and add it to existing vectorstore"""
-        try:
-            if not self.vectorstore:
-                logger.warning("No existing vectorstore - processing single document as new collection")
-                return self.process_documents()
-            
-            logger.info(f"Processing single document: {file_path.name}")
-            
-            # Process the single document
-            if file_path.suffix.lower() == '.md':
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    
-                document = Document(
-                    page_content=content,
-                    metadata={"source": file_path.name}
-                )
-                documents = [document]
-                
-            elif file_path.suffix.lower() == '.txt':
-                with open(file_path, 'r', encoding='utf-8') as f:
-                    content = f.read()
-                    
-                document = Document(
-                    page_content=content,
-                    metadata={"source": file_path.name}
-                )
-                documents = [document]
-                
-            elif file_path.suffix.lower() == '.pdf':
-                from docling.document_converter import DocumentConverter
-                converter = DocumentConverter()
-                result = converter.convert(file_path)
-                
-                content = result.document.export_to_markdown()
-                document = Document(
-                    page_content=content,
-                    metadata={"source": file_path.name}
-                )
-                documents = [document]
-                
-            else:
-                logger.warning(f"Unsupported file type: {file_path.suffix}")
-                return False
-            
-            # Split into chunks
-            chunks = self.text_splitter.split_documents(documents)
-            
-            # Add filename prefix to chunks for better search
-            processed_chunks = []
-            for chunk in chunks:
-                chunk_content = f"{file_path.stem} {file_path.stem} {chunk.page_content}"
-                processed_chunk = Document(
-                    page_content=chunk_content,
-                    metadata=chunk.metadata
-                )
-                processed_chunks.append(processed_chunk)
-            
-            logger.info(f"Created {len(processed_chunks)} chunks from {file_path.name}")
-            
-            # Add to existing vectorstore
-            self.vectorstore.add_documents(processed_chunks)
-            
-            # Save updated index
-            index_path = str(self.index_dir / "faiss_index")
-            self.vectorstore.save_local(index_path)
-            logger.info(f"Updated index saved to {index_path}")
-            
-            logger.info(f"✅ Single document processed: {file_path.name}")
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error processing single document {file_path}: {e}")
-            return False
     
     def debug_search(self, query: str) -> Dict[str, Any]:
-        """Debug search to see what's being retrieved using our enhanced search logic"""
+        """
+        Debug search to see what's being retrieved using enhanced search logic.
+        
+        Args:
+            query: Search query text to debug
+            
+        Returns:
+            Dictionary with query, total_results count, and top 10 results with details
+        """
         if not self.vectorstore:
             return {"error": "No vectorstore available"}
         
