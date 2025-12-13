@@ -1,11 +1,11 @@
 {
   "status": "IDLE",
-  "operation": "Stream complete for: whats small_business_strategy_overview.pdf",
-  "timestamp": 1765669246.1434321,
-  "operation_id": "IDLE_1765669246.1434321",
+  "operation": "Stream complete for: whats Invoice_Outline_-_Sheet1_1.pdf",
+  "timestamp": 1765669689.1463032,
+  "operation_id": "IDLE_1765669689.1463032",
   "metadata": {
-    "question": "whats small_business_strategy_overview.pdf",
-    "stream_time_s": 1.207,
-    "token_count": 102
+    "question": "whats Invoice_Outline_-_Sheet1_1.pdf",
+    "stream_time_s": 1.4,
+    "token_count": 131
   }
 }

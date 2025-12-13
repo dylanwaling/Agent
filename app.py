@@ -1,89 +1,47 @@
 #!/usr/bin/env python3
 """
 Lightweight Flask Web Interface for Document Q&A
-Simple, fast alternative to Streamlit
+Simple, fast alternative to Streamlit - provides a clean web UI for document upload,
+processing, and Q&A with streaming responses.
 """
 
-import os
-import logging
-from pathlib import Path
-from flask import Flask, request, render_template_string, jsonify, redirect, url_for
-from werkzeug.utils import secure_filename
-import time
-import subprocess
-import sys
 
-# Import our pipeline
+# ============================================================================
+# CONSTANTS & IMPORTS
+# ============================================================================
+
+# Standard library imports
+import os
+import sys
+import logging
+import subprocess
+import time
+from pathlib import Path
+
+# Third-party imports
+from flask import Flask, request, render_template_string, jsonify, redirect, url_for, Response
+from werkzeug.utils import secure_filename
+
+# Local imports
 from backend_logic import DocumentPipeline
 
-# Setup
+
+# Logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+
+# Flask application configuration
 app = Flask(__name__)
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
 app.config['UPLOAD_FOLDER'] = 'data/documents'
 
-# Initialize pipeline on startup (with lazy loading and cleanup)
+
+# Global pipeline instance (lazy-loaded)
 pipeline = None
 
-def clean_startup():
-    """Clean startup - remove any partial index files"""
-    try:
-        index_dir = Path("data/index")
-        if index_dir.exists():
-            # Check if index is complete
-            faiss_file = index_dir / "faiss_index" / "index.faiss"
-            pkl_file = index_dir / "faiss_index" / "index.pkl"
-            
-            logger.info(f"Checking index files:")
-            logger.info(f"FAISS file exists: {faiss_file.exists()} - {faiss_file}")
-            logger.info(f"PKL file exists: {pkl_file.exists()} - {pkl_file}")
-            
-            # Only clean if BOTH files are missing (not if one is missing)
-            if not faiss_file.exists() and not pkl_file.exists():
-                logger.info("🧹 No index files found - cleaning empty directory...")
-                import shutil
-                shutil.rmtree(index_dir, ignore_errors=True)
-                logger.info("✅ Cleaned up empty index directory")
-            elif faiss_file.exists() and pkl_file.exists():
-                logger.info("✅ Complete index found - keeping existing files")
-            else:
-                logger.warning(f"⚠️ Partial index found - keeping files but may need reprocessing")
-        
-        return True
-    except Exception as e:
-        logger.error(f"Error during cleanup: {e}")
-        return False
 
-def get_pipeline():
-    """Get or initialize pipeline (lazy loading)"""
-    global pipeline
-    if pipeline is None:
-        try:
-            # Clean startup first
-            clean_startup()
-            
-            # Initialize pipeline (it will auto-load existing index)
-            pipeline = DocumentPipeline()
-            
-            # Auto-process documents if no index was loaded
-            if pipeline.vectorstore is None:
-                logger.info("🔄 No index found - automatically processing documents...")
-                success = pipeline.process_documents()
-                if success:
-                    logger.info("✅ Documents auto-processed successfully!")
-                else:
-                    logger.error("❌ Auto-processing failed")
-            else:
-                logger.info("✅ Pipeline initialized with existing index")
-                
-        except Exception as e:
-            logger.error(f"Failed to initialize pipeline: {e}")
-            pipeline = None
-    return pipeline
-
-# HTML Template (embedded for simplicity)
+# HTML template (embedded for simplicity and single-file deployment)
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html>
@@ -280,23 +238,126 @@ HTML_TEMPLATE = '''
 </html>
 '''
 
-# Session storage (simple in-memory for testing)
+
+# ============================================================================
+# DATA MODELS & SESSION STATE
+# ============================================================================
+
+# Session storage (simple in-memory for single-user testing)
 session_data = {
-    'chat_history': [],
-    'status': None,
-    'documents': []
+    'chat_history': [],  # List of chat messages with type and content
+    'status': None,      # Current status message dict with type and message
+    'documents': []      # List of uploaded document filenames
 }
 
+
+# ============================================================================
+# CORE LOGIC - PIPELINE MANAGEMENT
+# ============================================================================
+
+def clean_startup():
+    """
+    Clean startup routine - validates and removes incomplete index files.
+    
+    Checks for both FAISS index and PKL files. Only removes index directory
+    if both files are completely missing to avoid partial index corruption.
+    
+    Returns:
+        bool: True if cleanup completed successfully, False on error
+    """
+    try:
+        index_dir = Path("data/index")
+        if index_dir.exists():
+            # Check if index is complete
+            faiss_file = index_dir / "faiss_index" / "index.faiss"
+            pkl_file = index_dir / "faiss_index" / "index.pkl"
+            
+            logger.info(f"Checking index files:")
+            logger.info(f"FAISS file exists: {faiss_file.exists()} - {faiss_file}")
+            logger.info(f"PKL file exists: {pkl_file.exists()} - {pkl_file}")
+            
+            # Only clean if BOTH files are missing (not if one is missing)
+            if not faiss_file.exists() and not pkl_file.exists():
+                logger.info("🧹 No index files found - cleaning empty directory...")
+                import shutil
+                shutil.rmtree(index_dir, ignore_errors=True)
+                logger.info("✅ Cleaned up empty index directory")
+            elif faiss_file.exists() and pkl_file.exists():
+                logger.info("✅ Complete index found - keeping existing files")
+            else:
+                logger.warning(f"⚠️ Partial index found - keeping files but may need reprocessing")
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error during cleanup: {e}")
+        return False
+
+
+def get_pipeline():
+    """
+    Get or initialize the document processing pipeline (lazy loading).
+    
+    Creates pipeline instance on first call, performs startup cleanup,
+    and auto-processes documents if no existing index is found.
+    
+    Returns:
+        DocumentPipeline: Initialized pipeline instance or None on failure
+    """
+    global pipeline
+    if pipeline is None:
+        try:
+            # Clean startup first
+            clean_startup()
+            
+            # Initialize pipeline (it will auto-load existing index)
+            pipeline = DocumentPipeline()
+            
+            # Auto-process documents if no index was loaded
+            if pipeline.vectorstore is None:
+                logger.info("🔄 No index found - automatically processing documents...")
+                success = pipeline.process_documents()
+                if success:
+                    logger.info("✅ Documents auto-processed successfully!")
+                else:
+                    logger.error("❌ Auto-processing failed")
+            else:
+                logger.info("✅ Pipeline initialized with existing index")
+                
+        except Exception as e:
+            logger.error(f"Failed to initialize pipeline: {e}")
+            pipeline = None
+    return pipeline
+
+
+# ============================================================================
+# UTILITIES & HELPERS
+# ============================================================================
+
 def get_documents():
-    """Get list of uploaded documents"""
+    """
+    Get list of uploaded document filenames from the documents directory.
+    
+    Returns:
+        list: List of document filenames (empty list if directory doesn't exist)
+    """
     docs_dir = Path('data/documents')
     if docs_dir.exists():
         return [f.name for f in docs_dir.iterdir() if f.is_file()]
     return []
 
+
+# ============================================================================
+# FLASK ROUTES & REQUEST HANDLERS
+# ============================================================================
+
 @app.route('/')
 def index():
-    """Main page"""
+    """
+    Main page route - displays the document Q&A interface.
+    
+    Returns:
+        str: Rendered HTML template with current documents, chat history, and status
+    """
     try:
         session_data['documents'] = get_documents()
         return render_template_string(HTML_TEMPLATE, 
@@ -311,9 +372,18 @@ def index():
                                     chat_history=session_data['chat_history'],
                                     status=session_data['status'])
 
+
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    """Handle file upload"""
+    """
+    Handle file upload and automatic processing.
+    
+    Accepts file uploads, saves to documents directory, and triggers
+    automatic processing of the new document into the vector index.
+    
+    Returns:
+        redirect: Redirects to main page with status message
+    """
     try:
         if 'file' not in request.files:
             session_data['status'] = {'type': 'error', 'message': 'No file selected'}
@@ -355,9 +425,18 @@ def upload_file():
     
     return redirect(url_for('index'))
 
+
 @app.route('/remove_all', methods=['POST'])
 def remove_all_documents():
-    """Remove all documents and clear the index"""
+    """
+    Remove all documents and clear the vector index.
+    
+    Deletes all files from documents directory, removes index files,
+    resets the pipeline, and clears session chat history.
+    
+    Returns:
+        redirect: Redirects to main page with status message
+    """
     try:
         session_data['status'] = {'type': 'loading', 'message': '�️ Removing all documents...'}
         
@@ -393,11 +472,19 @@ def remove_all_documents():
     
     return redirect(url_for('index'))
 
+
 @app.route('/stream')
 def stream():
-    """Stream responses word by word"""
-    from flask import Response
+    """
+    Stream AI responses token by token for real-time display.
     
+    Accepts question via query parameter and streams response using
+    the pipeline's streaming capability for improved UX.
+    
+    Returns:
+        Response: Streaming response with text/plain mimetype
+        tuple: Error message and status code if validation fails
+    """
     question = request.args.get('question', '').strip()
     if not question:
         return "No question provided", 400
@@ -407,24 +494,34 @@ def stream():
         return "Please process documents first", 400
     
     def generate():
+        """Generator function for streaming tokens."""
         for token in current_pipeline.ask_streaming(question):
             yield token
     
     return Response(generate(), mimetype='text/plain')
 
+
 @app.route('/clear')
 def clear_chat():
-    """Clear chat history"""
-    session_data['chat_history'] = []
-    session_data['status'] = {'type': 'success', 'message': '🗑️ Chat cleared'}
-    return redirect(url_for('index'))
-def clear_chat():
-    """Clear chat history"""
+    """
+    Clear chat history and reset session.
+    
+    Returns:
+        redirect: Redirects to main page with success message
+    """
     session_data['chat_history'] = []
     session_data['status'] = {'type': 'success', 'message': '🗑️ Chat cleared'}
     return redirect(url_for('index'))
 
+
+# ============================================================================
+# ENTRY POINT
+# ============================================================================
+
 if __name__ == '__main__':
+    """
+    Main entry point - initializes system, launches monitoring GUI, and starts Flask server.
+    """
     print("🚀 Document Q&A - Flask Web Interface")
     print("=" * 50)
     
@@ -436,7 +533,6 @@ if __name__ == '__main__':
         monitor_script = script_dir / "backend_live.py"
         
         # Launch GUI without console window (pythonw.exe for Windows)
-        import sys
         python_exe = sys.executable
         # Use pythonw.exe instead of python.exe to hide console
         if python_exe.endswith('python.exe'):
@@ -454,7 +550,7 @@ if __name__ == '__main__':
         print(f"⚠️ Failed to launch monitor: {e}")
         print("   (App will continue without monitor)")
     
-    # Check documents
+    # Check documents status
     docs_dir = Path('data/documents')
     if docs_dir.exists():
         doc_count = len([f for f in docs_dir.iterdir() if f.is_file()])
