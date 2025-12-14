@@ -26,7 +26,7 @@ if __name__ == '__main__':
             pythonw_exe = python_exe
         
         # Import and run monitor from Monitor package
-        from Monitor.live_monitor_gui import LiveMonitorGUI
+        from Monitor.performance_monitor import LiveMonitorGUI
         import threading
         
         def run_monitor():
