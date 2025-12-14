@@ -5,13 +5,19 @@ Secure desktop version - provides a native UI for document upload,
 processing, and Q&A with streaming responses.
 """
 
+# Set PyTorch environment variables BEFORE any imports
+import os
+os.environ['PYTORCH_ENABLE_MPS_FALLBACK'] = '1'
+# Force CPU mode for all components
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
+os.environ['DOCLING_DEVICE'] = 'cpu'
+os.environ['DOCLING_USE_GPU'] = 'false'
 
 # ============================================================================
 # CONSTANTS & IMPORTS
 # ============================================================================
 
 # Standard library imports
-import os
 import sys
 import logging
 import subprocess

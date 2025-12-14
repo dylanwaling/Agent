@@ -1,11 +1,11 @@
 {
   "status": "IDLE",
-  "operation": "Stream complete for: whats 55555",
-  "timestamp": 1765688191.0056272,
-  "operation_id": "IDLE_1765688191.0056272",
+  "operation": "Stream complete for: whastss 555",
+  "timestamp": 1765692336.7840471,
+  "operation_id": "IDLE_1765692336.7840471",
   "metadata": {
-    "question": "whats 55555",
-    "stream_time_s": 2.571,
-    "token_count": 90
+    "question": "whastss 555",
+    "stream_time_s": 2.882,
+    "token_count": 344
   }
 }

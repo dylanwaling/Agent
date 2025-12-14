@@ -6,11 +6,14 @@
 #   Processes documents through Docling → Text Splitting → FAISS
 # ============================================================================
 
+import os
 import logging
 import time
 import warnings
 from pathlib import Path
 from typing import Optional, List
+
+# Basic imports without forcing device restrictions
 
 # Third-party imports
 from langchain.schema import Document
@@ -22,6 +25,7 @@ from config.settings import paths, model_config, logging_config, performance_con
 # Suppress PyTorch meta tensor warnings
 warnings.filterwarnings("ignore", message=".*copying from a non-meta parameter.*")
 warnings.filterwarnings("ignore", message=".*meta parameter.*")
+warnings.filterwarnings("ignore", message=".*Cannot copy out of meta tensor.*")
 
 logger = logging.getLogger(__name__)
 
@@ -213,10 +217,33 @@ class DocumentProcessor:
                     
                     return text
                 except Exception as docling_error:
-                    # If meta tensor error, try to continue with next document instead of failing
-                    if "meta tensor" in str(docling_error) or "Cannot copy out" in str(docling_error):
-                        logger.warning(f"Docling meta tensor issue for {doc_file.name}, skipping this file")
-                        return None
+                    # Log the actual error for debugging
+                    logger.warning(f"Docling error for {doc_file.name}: {str(docling_error)[:200]}...")
+                    
+                    # If meta tensor error, try PyPDF2 as fallback
+                    if ("meta tensor" in str(docling_error) or 
+                        "Cannot copy out" in str(docling_error)) and doc_file.suffix.lower() == '.pdf':
+                        
+                        logger.info(f"Trying PyPDF2 fallback for {doc_file.name}")
+                        try:
+                            import PyPDF2
+                            text_parts = []
+                            with open(doc_file, 'rb') as pdf_file:
+                                pdf_reader = PyPDF2.PdfReader(pdf_file)
+                                for page in pdf_reader.pages:
+                                    text_parts.append(page.extract_text())
+                            
+                            fallback_text = "\n".join(text_parts)
+                            if fallback_text.strip():
+                                logger.info(f"✅ PyPDF2 fallback successful for {doc_file.name}")
+                                return fallback_text
+                            else:
+                                logger.warning(f"PyPDF2 extracted empty text from {doc_file.name}")
+                                return None
+                                
+                        except Exception as pypdf_error:
+                            logger.error(f"PyPDF2 fallback failed for {doc_file.name}: {pypdf_error}")
+                            return None
                     else:
                         logger.error(f"Docling failed for {doc_file.name}: {docling_error}")
                         return None
@@ -462,9 +489,33 @@ class DocumentProcessor:
                 documents = [document]
                 
             elif file_path.suffix.lower() == '.pdf':
-                result = self.components.converter.convert(file_path)
-                
-                content = result.document.export_to_markdown()
+                try:
+                    result = self.components.converter.convert(file_path)
+                    content = result.document.export_to_markdown()
+                except Exception as docling_error:
+                    # Use PyPDF2 fallback for meta tensor issues
+                    logger.warning(f"Docling error for {file_path.name}: {str(docling_error)[:200]}...")
+                    if "meta tensor" in str(docling_error) or "Cannot copy out" in str(docling_error):
+                        logger.info(f"Trying PyPDF2 fallback for {file_path.name}")
+                        try:
+                            import PyPDF2
+                            text_parts = []
+                            with open(file_path, 'rb') as pdf_file:
+                                pdf_reader = PyPDF2.PdfReader(pdf_file)
+                                for page in pdf_reader.pages:
+                                    text_parts.append(page.extract_text())
+                            content = "\n".join(text_parts)
+                            if not content.strip():
+                                logger.warning(f"PyPDF2 extracted empty text from {file_path.name}")
+                                return False
+                            logger.info(f"✅ PyPDF2 fallback successful for {file_path.name}")
+                        except Exception as pypdf_error:
+                            logger.error(f"PyPDF2 fallback failed for {file_path.name}: {pypdf_error}")
+                            return False
+                    else:
+                        logger.error(f"Docling failed for {file_path.name}: {docling_error}")
+                        return False
+                        
                 document = Document(
                     page_content=content,
                     metadata={"source": file_path.name}
