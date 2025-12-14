@@ -3,7 +3,7 @@ Question Input Monitor - Tracks incoming user questions
 """
 
 from datetime import datetime
-from Monitor.performance_monitor import BaseMonitor
+from monitor.performance_monitor import BaseMonitor
 
 
 class QuestionInputMonitor(BaseMonitor):

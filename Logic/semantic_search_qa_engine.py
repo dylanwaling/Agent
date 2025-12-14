@@ -11,8 +11,8 @@ import time
 from typing import List, Dict, Any, Optional
 
 # Local imports
-from Config.settings import search_config, model_config, logging_config
-from Utils.system_io_helpers import normalize_filename
+from config.settings import search_config, model_config, logging_config
+from utils.system_io_helpers import normalize_filename
 
 logger = logging.getLogger(__name__)
 
@@ -238,8 +238,28 @@ class SearchEngine:
             logger.info(f"Search completed in {search_time:.3f} seconds")
             
             if not search_results:
+                # No relevant documents, but try to answer with LLM's general knowledge
+                logger.info("No relevant documents found, attempting to answer with LLM knowledge")
+                llm_start = time.time()
+                answer = self.components.llm.invoke(question)
+                llm_time = time.time() - llm_start
+                
+                total_time = time.time() - start_time
+                self.analytics.log_operation(
+                    operation_type="response_complete",
+                    operation=f"Response complete (no docs): {question[:60]}",
+                    metadata={
+                        "question": question,
+                        "total_time_s": round(total_time, 3),
+                        "llm_time_s": round(llm_time, 3),
+                        "answer_length": len(answer),
+                        "num_sources": 0
+                    },
+                    status="IDLE"
+                )
+                
                 return {
-                    "answer": "No relevant documents found for your question.",
+                    "answer": answer,
                     "sources": []
                 }
             
@@ -375,7 +395,9 @@ class SearchEngine:
             # Search for relevant documents
             search_results = self.search(question, update_status=False)
             if not search_results:
-                yield "No relevant documents found for your question."
+                # No relevant documents, stream answer with LLM's general knowledge
+                for token in self.components.llm.stream(question):
+                    yield token
                 return
             
             # Build context

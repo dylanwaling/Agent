@@ -25,11 +25,11 @@ def main():
         
         if choice == "1":
             print("\n🚀 Running Application (GUI + Monitoring)...")
-            subprocess.run([sys.executable, "-m", "Program"])
+            subprocess.run([sys.executable, "-m", "program"])
             break
         elif choice == "2":
             print("\n🔧 Running System Tests...")
-            subprocess.run([sys.executable, "-m", "Tests"])
+            subprocess.run([sys.executable, "-m", "tests"])
             break
         elif choice == "3":
             print("\n👋 Goodbye!")

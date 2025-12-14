@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 # Local imports
-from Config.settings import paths, model_config, logging_config
-from Analytics.operation_logger_tracker import AnalyticsLogger
-from Logic.model_component_initializer import ComponentInitializer
-from Logic.document_ingestion_handler import DocumentProcessor
-from Logic.semantic_search_qa_engine import SearchEngine
+from config.settings import paths, model_config, logging_config
+from analytics.operation_logger_tracker import AnalyticsLogger
+from logic.model_component_initializer import ComponentInitializer
+from logic.document_ingestion_handler import DocumentProcessor
+from logic.semantic_search_qa_engine import SearchEngine
 
 logger = logging.getLogger(__name__)
 
@@ -54,6 +54,10 @@ class DocumentPipeline:
         
         # Status file for live monitoring
         self.status_file = paths.STATUS_FILE
+        
+        # Suppress PyTorch warnings
+        import os
+        os.environ['PYTHONWARNINGS'] = 'ignore'
         
         # Initialize core components
         self._init_pipeline()
@@ -116,10 +120,7 @@ class DocumentPipeline:
         Returns:
             True if successful, False otherwise
         """
-        # For now, just reprocess all documents
-        # TODO: Implement true single document processing
-        logger.warning("Single document processing not fully implemented - reprocessing all documents")
-        return self.process_documents()
+        return self.doc_processor.process_single_document(file_path)
     
     def load_index(self) -> bool:
         """

@@ -24,9 +24,9 @@ from tkinter import ttk, filedialog, scrolledtext, messagebox
 import shutil
 
 # Local imports - configuration and utilities
-from Config.settings import paths, performance_config, file_config
-from Utils.system_io_helpers import get_document_files, count_document_files
-from Logic.rag_pipeline_orchestrator import DocumentPipeline
+from config.settings import paths, performance_config, file_config
+from utils.system_io_helpers import get_document_files, count_document_files
+from logic.rag_pipeline_orchestrator import DocumentPipeline
 
 
 # Logging configuration
@@ -106,19 +106,16 @@ def get_pipeline():
             # Initialize pipeline (it will auto-load existing index)
             pipeline = DocumentPipeline()
             
-            # Auto-process documents if no index was loaded
+            # Log index status
             if pipeline.vectorstore is None:
-                logger.info("🔄 No index found - automatically processing documents...")
-                success = pipeline.process_documents()
-                if success:
-                    logger.info("✅ Documents auto-processed successfully!")
-                else:
-                    logger.error("❌ Auto-processing failed")
+                logger.info("⚠️ No index loaded - documents need to be processed via 'Process Documents' button")
             else:
                 logger.info("✅ Pipeline initialized with existing index")
                 
         except Exception as e:
             logger.error(f"Failed to initialize pipeline: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
             pipeline = None
     return pipeline
 
@@ -352,10 +349,19 @@ class DocumentQAApp:
         """Initialize pipeline in background thread."""
         def init():
             try:
-                get_pipeline()
-                self.update_status('success', '✅ System ready')
+                logger.info("🔄 Initializing pipeline in background...")
+                p = get_pipeline()
+                if p:
+                    if p.vectorstore:
+                        self.update_status('success', '✅ System ready - documents loaded')
+                    else:
+                        self.update_status('warning', '⚠️ System ready - no documents processed yet')
+                else:
+                    self.update_status('error', '❌ Pipeline initialization failed')
             except Exception as e:
                 logger.error(f"Pipeline initialization failed: {e}")
+                import traceback
+                traceback.print_exc()
                 self.update_status('error', f'❌ Initialization failed: {e}')
         
         thread = threading.Thread(target=init, daemon=True)
@@ -646,7 +652,7 @@ if __name__ == '__main__':
             pythonw_exe = python_exe
         
         subprocess.Popen(
-            [pythonw_exe, "-m", "monitoring.dashboard"],
+            [pythonw_exe, "-m", "monitor"],
             cwd=str(project_root),
             creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
         )

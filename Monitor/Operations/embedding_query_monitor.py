@@ -4,7 +4,7 @@ Embedding Query Monitor - Tracks query embedding process
 
 import logging
 from datetime import datetime
-from Monitor.performance_monitor import BaseMonitor
+from monitor.performance_monitor import BaseMonitor
 
 logger = logging.getLogger(__name__)
 

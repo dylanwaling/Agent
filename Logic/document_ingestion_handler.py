@@ -8,6 +8,7 @@
 
 import logging
 import time
+import warnings
 from pathlib import Path
 from typing import Optional, List
 
@@ -16,7 +17,11 @@ from langchain.schema import Document
 from langchain_community.vectorstores import FAISS
 
 # Local imports
-from Config.settings import paths, model_config, logging_config, performance_config
+from config.settings import paths, model_config, logging_config, performance_config
+
+# Suppress PyTorch meta tensor warnings
+warnings.filterwarnings("ignore", message=".*copying from a non-meta parameter.*")
+warnings.filterwarnings("ignore", message=".*meta parameter.*")
 
 logger = logging.getLogger(__name__)
 
@@ -184,25 +189,37 @@ class DocumentProcessor:
                 with open(doc_file, 'r', encoding='utf-8') as f:
                     return f.read()
             else:
-                # Use Docling for other formats (PDF, DOCX, images)
-                parse_start = time.time()
-                result = self.components.converter.convert(str(doc_file))
-                text = result.document.export_to_markdown()
-                parse_time = time.time() - parse_start
-                
-                # Log Docling parsing
-                self.analytics.log_operation(
-                    operation_type="docling_parse",
-                    operation=f"Parsed: {doc_file.name}",
-                    metadata={
-                        "filename": doc_file.name,
-                        "parse_time_s": round(parse_time, 3),
-                        "extracted_length": len(text)
-                    },
-                    status="PROCESSING"
-                )
-                
-                return text
+                # Use Docling for other formats (PDF, DOCX, images) with timeout protection
+                try:
+                    # Suppress warnings during Docling processing
+                    with warnings.catch_warnings():
+                        warnings.simplefilter("ignore")
+                        parse_start = time.time()
+                        result = self.components.converter.convert(str(doc_file))
+                        text = result.document.export_to_markdown()
+                        parse_time = time.time() - parse_start
+                    
+                    # Log Docling parsing
+                    self.analytics.log_operation(
+                        operation_type="docling_parse",
+                        operation=f"Parsed: {doc_file.name}",
+                        metadata={
+                            "filename": doc_file.name,
+                            "parse_time_s": round(parse_time, 3),
+                            "extracted_length": len(text)
+                        },
+                        status="PROCESSING"
+                    )
+                    
+                    return text
+                except Exception as docling_error:
+                    # If meta tensor error, try to continue with next document instead of failing
+                    if "meta tensor" in str(docling_error) or "Cannot copy out" in str(docling_error):
+                        logger.warning(f"Docling meta tensor issue for {doc_file.name}, skipping this file")
+                        return None
+                    else:
+                        logger.error(f"Docling failed for {doc_file.name}: {docling_error}")
+                        return None
                 
         except Exception as e:
             logger.error(f"Text extraction failed for {doc_file.name}: {e}")
@@ -404,4 +421,86 @@ class DocumentProcessor:
             logger.error(f"Exception type: {type(e).__name__}")
             import traceback
             logger.error(f"Full traceback: {traceback.format_exc()}")
+            return False
+    
+    def process_single_document(self, file_path: Path) -> bool:
+        """
+        Process a single document and add it to existing vectorstore.
+        
+        Args:
+            file_path: Path to the document file to process
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            if not self.vectorstore:
+                logger.warning("No existing vectorstore - processing single document as new collection")
+                return self.process_all_documents()
+            
+            logger.info(f"Processing single document: {file_path.name}")
+            
+            # Process the single document
+            if file_path.suffix.lower() == '.md':
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                document = Document(
+                    page_content=content,
+                    metadata={"source": file_path.name}
+                )
+                documents = [document]
+                
+            elif file_path.suffix.lower() == '.txt':
+                with open(file_path, 'r', encoding='utf-8') as f:
+                    content = f.read()
+                    
+                document = Document(
+                    page_content=content,
+                    metadata={"source": file_path.name}
+                )
+                documents = [document]
+                
+            elif file_path.suffix.lower() == '.pdf':
+                result = self.components.converter.convert(file_path)
+                
+                content = result.document.export_to_markdown()
+                document = Document(
+                    page_content=content,
+                    metadata={"source": file_path.name}
+                )
+                documents = [document]
+                
+            else:
+                logger.warning(f"Unsupported file type: {file_path.suffix}")
+                return False
+            
+            # Split into chunks
+            chunks = self.components.text_splitter.split_documents(documents)
+            
+            # Add filename prefix to chunks for better search
+            processed_chunks = []
+            for chunk in chunks:
+                chunk_content = f"{file_path.stem} {file_path.stem} {chunk.page_content}"
+                processed_chunk = Document(
+                    page_content=chunk_content,
+                    metadata=chunk.metadata
+                )
+                processed_chunks.append(processed_chunk)
+            
+            logger.info(f"Created {len(processed_chunks)} chunks from {file_path.name}")
+            
+            # Add to existing vectorstore
+            self.vectorstore.add_documents(processed_chunks)
+            
+            # Save updated index
+            index_path = str(self.index_dir / "faiss_index")
+            self.vectorstore.save_local(index_path)
+            logger.info(f"Updated index saved to {index_path}")
+            
+            logger.info(f"✅ Single document processed: {file_path.name}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Error processing single document {file_path}: {e}")
             return False

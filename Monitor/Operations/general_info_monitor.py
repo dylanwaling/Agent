@@ -7,7 +7,7 @@ import logging
 from datetime import datetime
 from tkinter import ttk, scrolledtext
 import tkinter as tk
-from Monitor.performance_monitor import BaseMonitor
+from monitor.performance_monitor import BaseMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -120,7 +120,7 @@ class GeneralInfoMonitor(BaseMonitor):
         self.widgets['last_operation'].config(text=last_op)
         
         # Update pipeline status
-        from Config.settings import paths
+        from config.settings import paths
         index_path = str(paths.FAISS_INDEX_FILE)
         docs_path = str(paths.DOCS_DIR)
         

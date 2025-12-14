@@ -16,7 +16,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 
 # Import configuration
-from Config.settings import paths, file_config
+from config.settings import paths, file_config
 
 logger = logging.getLogger(__name__)
 

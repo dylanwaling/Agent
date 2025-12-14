@@ -18,7 +18,7 @@ from langchain_ollama import OllamaLLM
 from langchain.prompts import PromptTemplate
 
 # Local imports
-from Config.settings import model_config, get_gpu_optimized_chunk_size, get_gpu_optimized_chunk_overlap
+from config.settings import model_config, get_gpu_optimized_chunk_size, get_gpu_optimized_chunk_overlap
 
 logger = logging.getLogger(__name__)
 
@@ -105,17 +105,10 @@ class ComponentInitializer:
         )
     
     def _init_embeddings(self):
-        """Initialize embeddings model with GPU support."""
-        embedding_kwargs = {
-            "model_name": model_config.EMBEDDING_MODEL
-        }
-        
-        # Add device specification if GPU is available
-        if self.device == "cuda":
-            embedding_kwargs["model_kwargs"] = {"device": self.device}
-            embedding_kwargs["encode_kwargs"] = {"device": self.device}
-        
-        self.embeddings = HuggingFaceEmbeddings(**embedding_kwargs)
+        # Embeddings - let it auto-detect device to avoid meta tensor issues
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name=model_config.EMBEDDING_MODEL
+        )
     
     def _init_llm(self):
         """Initialize LLM optimized for qwen2.5:1.5b."""

@@ -5,7 +5,7 @@ FAISS Search Monitor - Tracks vector search operations
 import os
 import logging
 from datetime import datetime
-from Monitor.performance_monitor import BaseMonitor
+from monitor.performance_monitor import BaseMonitor
 
 logger = logging.getLogger(__name__)
 
@@ -110,7 +110,7 @@ class FAISSSearchMonitor(BaseMonitor):
         Checks index file existence, size, and vector count from the pipeline.
         """
         # Import here to avoid circular dependency
-        from Config.settings import paths
+        from config.settings import paths
         index_path = str(paths.FAISS_INDEX_FILE)
         
         if os.path.exists(index_path):

@@ -21,9 +21,9 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext
 
 # Local imports - configuration and utilities
-from Config.settings import paths, performance_config
-from Utils.system_io_helpers import read_jsonl, format_timestamp, get_gpu_info
-from Logic.rag_pipeline_orchestrator import DocumentPipeline
+from config.settings import paths, performance_config
+from utils.system_io_helpers import read_jsonl, format_timestamp, get_gpu_info
+from logic.rag_pipeline_orchestrator import DocumentPipeline
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -511,10 +511,10 @@ class LiveMonitorGUI:
         
         Displays a grid of buttons for accessing different monitor views.
         """
-        from Monitor.Operations.general_info_monitor import GeneralInfoMonitor
-        from Monitor.Operations.question_input_monitor import QuestionInputMonitor
-        from Monitor.Operations.embedding_query_monitor import EmbeddingQueryMonitor
-        from Monitor.Operations.faiss_search_monitor import FAISSSearchMonitor
+        from monitor.operations.general_info_monitor import GeneralInfoMonitor
+        from monitor.operations.question_input_monitor import QuestionInputMonitor
+        from monitor.operations.embedding_query_monitor import EmbeddingQueryMonitor
+        from monitor.operations.faiss_search_monitor import FAISSSearchMonitor
         
         self.clear_container()
         self.current_view = "menu"

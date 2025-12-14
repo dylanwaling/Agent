@@ -10,7 +10,7 @@ if __name__ == '__main__':
     import sys
     from pathlib import Path
     import subprocess
-    from Utils.system_io_helpers import count_document_files
+    from utils.system_io_helpers import count_document_files
     
     print("🚀 Document Q&A - Desktop Interface")
     print("=" * 50)
@@ -25,8 +25,8 @@ if __name__ == '__main__':
         else:
             pythonw_exe = python_exe
         
-        # Import and run monitor from Monitor package
-        from Monitor.performance_monitor import LiveMonitorGUI
+        # Import and run monitor from monitor package
+        from monitor.performance_monitor import LiveMonitorGUI
         import threading
         
         def run_monitor():
