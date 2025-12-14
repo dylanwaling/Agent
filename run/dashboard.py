@@ -116,6 +116,8 @@ class BaseMonitor:
         self.widgets = {}
         self.items = []  # Store all items for this monitor
         self.displayed_count = 0  # Track what's displayed
+        self.refresh_job = None  # Store periodic refresh job ID
+        self.refresh_interval_ms = 2000  # Refresh every 2 seconds
         
     def create_frame(self):
         """Create the main frame for this monitor"""
@@ -326,6 +328,56 @@ class BaseMonitor:
     def update_stats(self):
         """Override this method in subclasses for periodic stat updates"""
         pass
+    
+    def start_auto_refresh(self, extract_func, format_func):
+        """
+        Start periodic refresh to reload data from file.
+        
+        Args:
+            extract_func: Function to extract relevant items from operations
+            format_func: Function to format items for display
+        """
+        self._extract_func = extract_func
+        self._format_func = format_func
+        self._schedule_refresh()
+    
+    def _schedule_refresh(self):
+        """Schedule the next refresh cycle"""
+        if self.refresh_job:
+            self.gui.root.after_cancel(self.refresh_job)
+        self.refresh_job = self.gui.root.after(self.refresh_interval_ms, self._do_refresh)
+    
+    def _do_refresh(self):
+        """Perform periodic refresh of data from file"""
+        try:
+            # Reload operations from file
+            all_operations = self.gui.load_operation_history()
+            new_items = self._extract_func(all_operations)
+            
+            # Check if there are new items
+            if len(new_items) > len(self.items):
+                # Add new items to display
+                new_count = len(new_items) - len(self.items)
+                for item in new_items[-new_count:]:
+                    self._add_item_to_display(item, self._format_func)
+                
+                # Update items list
+                self.items = new_items
+                
+                # Update stats if the method exists
+                if hasattr(self, '_update_stats'):
+                    self._update_stats()
+        except Exception as e:
+            logger.error(f"Error during monitor refresh: {e}")
+        
+        # Schedule next refresh
+        self._schedule_refresh()
+    
+    def stop_auto_refresh(self):
+        """Stop the periodic refresh"""
+        if self.refresh_job:
+            self.gui.root.after_cancel(self.refresh_job)
+            self.refresh_job = None
 
 
 
@@ -363,6 +415,7 @@ class LiveMonitorGUI:
         
         # Load historical data on startup
         self.all_operations = self._load_historical_operations()
+        self.general_info_displayed_count = len(self.all_operations)  # Track what's displayed in General Info
         
         # Create the GUI
         self.root = tk.Tk()
@@ -435,7 +488,12 @@ class LiveMonitorGUI:
         Clear the main container.
         
         Destroys all child widgets in the main container frame.
+        Stops auto-refresh on active monitor if present.
         """
+        # Stop auto-refresh on current monitor
+        if self.active_monitor and hasattr(self.active_monitor, 'stop_auto_refresh'):
+            self.active_monitor.stop_auto_refresh()
+        
         for widget in self.main_container.winfo_children():
             widget.destroy()
     
@@ -614,11 +672,21 @@ class LiveMonitorGUI:
     def load_operation_history(self):
         """
         Return all operations (for monitors that need full history).
+        Reloads from file to ensure fresh data is available.
         
         Returns:
             List of all operation dictionaries
         """
-        return self.all_operations
+        try:
+            # Reload from file to get latest operations
+            fresh_operations = read_jsonl(self.history_file)
+            # Update our cached list with any operations we might have missed
+            self.all_operations = fresh_operations
+            self.operation_count = len(self.all_operations)
+            return self.all_operations
+        except Exception as e:
+            logger.error(f"Error reloading operation history: {e}")
+            return self.all_operations
     
     def read_status(self):
         """
@@ -698,11 +766,49 @@ class LiveMonitorGUI:
         if at_bottom:
             self.operations_text.see(tk.END)
     
+    def _refresh_general_info_operations(self):
+        """
+        Refresh operations list in General Info view from file.
+        
+        Reloads operations from file and adds any new ones to the display.
+        """
+        try:
+            # Reload operations from file (same as monitors do)
+            fresh_operations = self.load_operation_history()
+            
+            # Check if there are new operations
+            if len(fresh_operations) > self.general_info_displayed_count:
+                # Get new operations
+                new_ops = fresh_operations[self.general_info_displayed_count:]
+                
+                # Check if at bottom
+                yview = self.operations_text.yview()
+                at_bottom = yview[1] >= 0.99
+                
+                # Add new operations to display
+                self.operations_text.config(state=tk.NORMAL)
+                for op in new_ops:
+                    op_time = datetime.fromtimestamp(op.get('timestamp', 0)).strftime('%H:%M:%S')
+                    formatted = f"[{op_time}] {op.get('operation', 'Unknown')}"
+                    self.operation_history.append(formatted)
+                    self.operations_text.insert(tk.END, formatted + "\n")
+                self.operations_text.config(state=tk.DISABLED)
+                
+                # Auto-scroll if at bottom
+                if at_bottom:
+                    self.operations_text.see(tk.END)
+                
+                # Update displayed count
+                self.general_info_displayed_count = len(fresh_operations)
+                self.count_label.config(text=str(self.general_info_displayed_count))
+        except Exception as e:
+            logger.error(f"Error refreshing general info operations: {e}")
+    
     def update_general_info(self):
         """
-        Update General Info view (periodic updates for status/time only).
+        Update General Info view (periodic updates for status/time AND operations).
         
-        Called every second to update time-based information and system status.
+        Called every second to update time-based information, system status, and operations list.
         """
         # Read current status
         status, last_op, timestamp, operation_id = self.read_status()
@@ -741,12 +847,15 @@ class LiveMonitorGUI:
         self.uptime_label.config(text=self.format_uptime(uptime))
         self.time_label.config(text=datetime.now().strftime('%Y-%m-%d %H:%M:%S'))
         
+        # Refresh operations list from file (same as monitors)
+        self._refresh_general_info_operations()
+        
         # Update status bar with last update time
         if timestamp > 0:
             age = time.time() - timestamp
-            self.statusbar.config(text=f"Monitor running | Event-driven | Last status: {age:.1f}s ago")
+            self.statusbar.config(text=f"Monitor running | Auto-refresh | Last status: {age:.1f}s ago")
         
-        # Schedule next update (1 second for status/time updates)
+        # Schedule next update (1 second for status/time/operations updates)
         if self.current_view == "general_info":
             self.root.after(STATUS_UPDATE_INTERVAL_MS, self.update_general_info)
     
@@ -794,7 +903,11 @@ class LiveMonitorGUI:
         
         Displays comprehensive system status with operations, pipeline info, and runtime stats.
         """
-        # Clear current container
+        # Clear current container and stop any active monitor refresh
+        if self.active_monitor and hasattr(self.active_monitor, 'stop_auto_refresh'):
+            self.active_monitor.stop_auto_refresh()
+        self.active_monitor = None
+        
         for widget in self.main_container.winfo_children():
             widget.destroy()
         
@@ -803,10 +916,13 @@ class LiveMonitorGUI:
         # Create the original widgets in a new frame
         self.create_general_info_widgets()
         
-        # Populate with historical operations
-        if self.all_operations:
+        # Populate with initial historical operations (last 50)
+        fresh_operations = self.load_operation_history()
+        display_ops = fresh_operations[-50:] if len(fresh_operations) > 50 else fresh_operations
+        
+        if display_ops:
             self.operations_text.config(state=tk.NORMAL)
-            for op in self.all_operations[-50:]:  # Last 50 operations
+            for op in display_ops:
                 op_time = datetime.fromtimestamp(op.get('timestamp', 0)).strftime('%H:%M:%S')
                 formatted = f"[{op_time}] {op.get('operation', 'Unknown')}"
                 self.operation_history.append(formatted)
@@ -814,7 +930,10 @@ class LiveMonitorGUI:
             self.operations_text.config(state=tk.DISABLED)
             self.operations_text.see(tk.END)
         
-        # Start periodic updates for status/time
+        # Track what we've displayed
+        self.general_info_displayed_count = len(fresh_operations)
+        
+        # Start periodic updates for status/time AND operations
         self.root.after(STATUS_UPDATE_INTERVAL_MS, self.update_general_info)
         
     def create_general_info_widgets(self):
@@ -941,6 +1060,13 @@ class QuestionInputMonitor(BaseMonitor):
             ""
         ])
         self._update_stats()
+        
+        # Start auto-refresh to get updates from file
+        self.start_auto_refresh(self._extract_questions, lambda q: [
+            f"[{q['time']}] ({q['length']} chars) {'[STREAMING]' if q.get('streaming') else ''}",
+            f"  {q['question']}",
+            ""
+        ])
     
     def on_new_operation(self, operation_data):
         """
@@ -1052,6 +1178,13 @@ class EmbeddingQueryMonitor(BaseMonitor):
             ""
         ])
         self._update_stats()
+        
+        # Start auto-refresh to get updates from file
+        self.start_auto_refresh(self._extract_embeddings, lambda e: [
+            f"[{e['time']}] {e['query'][:60]}...",
+            f"  → Model: {e['model']}, Dim: {e['dim']}, Device: {e['device']}",
+            ""
+        ])
     
     def on_new_operation(self, operation_data):
         """
@@ -1178,6 +1311,13 @@ class FAISSSearchMonitor(BaseMonitor):
             ""
         ])
         self._update_stats()
+        
+        # Start auto-refresh to get updates from file
+        self.start_auto_refresh(self._extract_searches, lambda s: [
+            f"[{s['time']}] Query: {s['query'][:50]}...",
+            f"  → K={s['k']}, Results={s['num_results']}, Index={s['index_size']}, Time={s['time_ms']:.2f}ms",
+            ""
+        ])
     
     def on_new_operation(self, operation_data):
         """

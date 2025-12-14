@@ -1,11 +1,11 @@
 {
   "status": "IDLE",
-  "operation": "Stream complete for: whast comprensive guide to corprate growth",
-  "timestamp": 1765676984.3596478,
-  "operation_id": "IDLE_1765676984.3596478",
+  "operation": "Stream complete for: whats invoice 5555",
+  "timestamp": 1765677848.90459,
+  "operation_id": "IDLE_1765677848.90459",
   "metadata": {
-    "question": "whast comprensive guide to corprate growth",
-    "stream_time_s": 3.169,
-    "token_count": 350
+    "question": "whats invoice 5555",
+    "stream_time_s": 1.04,
+    "token_count": 83
   }
 }

@@ -109,18 +109,22 @@ def append_jsonl(file_path: Path, data: Dict[str, Any]) -> bool:
         return False
 
 
-def read_jsonl(file_path: Path) -> list:
+def read_jsonl(file_path) -> list:
     """
     Read all lines from a JSONL file.
     
     Args:
-        file_path: Path to JSONL file
+        file_path: Path to JSONL file (string or Path object)
         
     Returns:
         List of dictionaries, empty list if error
     """
     data = []
     try:
+        # Convert to Path if string
+        if isinstance(file_path, str):
+            file_path = Path(file_path)
+        
         if file_path.exists():
             with open(file_path, 'r', encoding='utf-8') as f:
                 for line in f:
