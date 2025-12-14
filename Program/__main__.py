@@ -25,11 +25,16 @@ if __name__ == '__main__':
         else:
             pythonw_exe = python_exe
         
-        subprocess.Popen(
-            [pythonw_exe, "-m", "Program.performance_monitor"],
-            cwd=str(project_root),
-            creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
-        )
+        # Import and run monitor from Monitor package
+        from Monitor.live_monitor_gui import LiveMonitorGUI
+        import threading
+        
+        def run_monitor():
+            monitor = LiveMonitorGUI()
+            monitor.run()
+        
+        monitor_thread = threading.Thread(target=run_monitor, daemon=False)
+        monitor_thread.start()
         print("✅ Live monitor GUI launched")
     except Exception as e:
         print(f"⚠️ Failed to launch monitor: {e}")

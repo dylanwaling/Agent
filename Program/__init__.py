@@ -7,6 +7,5 @@
 # ============================================================================
 
 from .rag_desktop_app import DocumentQAApp, get_pipeline, get_documents
-from .performance_monitor import LiveMonitorGUI, event_bus
 
-__all__ = ['DocumentQAApp', 'get_pipeline', 'get_documents', 'LiveMonitorGUI', 'event_bus']
+__all__ = ['DocumentQAApp', 'get_pipeline', 'get_documents']

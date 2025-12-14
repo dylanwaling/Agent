@@ -15,8 +15,8 @@ def main():
     print("╚══════════════════════════════════════════════════════════╝")
     print()
     print("Available Commands:")
-    print("  1. Run Application (GUI + Monitoring)")
-    print("  2. Run System Tests")
+    print("  1. Run Application")
+    print("  2. Run System Test")
     print("  3. Exit")
     print()
     
@@ -24,7 +24,7 @@ def main():
         choice = input("Enter your choice (1-3): ").strip()
         
         if choice == "1":
-            print("\n🚀 Running Application...")
+            print("\n🚀 Running Application (GUI + Monitoring)...")
             subprocess.run([sys.executable, "-m", "Program"])
             break
         elif choice == "2":
