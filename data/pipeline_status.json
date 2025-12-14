@@ -1,11 +1,11 @@
 {
   "status": "IDLE",
-  "operation": "Stream complete for: whats small_business_strategy_overview.",
-  "timestamp": 1765673212.598601,
-  "operation_id": "IDLE_1765673212.598601",
+  "operation": "Stream complete for: whats 5555",
+  "timestamp": 1765674744.48214,
+  "operation_id": "IDLE_1765674744.48214",
   "metadata": {
-    "question": "whats small_business_strategy_overview.",
-    "stream_time_s": 1.368,
-    "token_count": 117
+    "question": "whats 5555",
+    "stream_time_s": 1.432,
+    "token_count": 151
   }
 }
