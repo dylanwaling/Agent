@@ -16,7 +16,7 @@ from langchain.schema import Document
 from langchain_community.vectorstores import FAISS
 
 # Local imports
-from config.settings import paths, model_config, logging_config, performance_config
+from Config.settings import paths, model_config, logging_config, performance_config
 
 logger = logging.getLogger(__name__)
 

@@ -18,7 +18,7 @@ from langchain_ollama import OllamaLLM
 from langchain.prompts import PromptTemplate
 
 # Local imports
-from config.settings import model_config, get_gpu_optimized_chunk_size, get_gpu_optimized_chunk_overlap
+from Config.settings import model_config, get_gpu_optimized_chunk_size, get_gpu_optimized_chunk_overlap
 
 logger = logging.getLogger(__name__)
 

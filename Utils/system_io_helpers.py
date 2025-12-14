@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 # ============================================================================
-# HELPERS MODULE
+# SYSTEM I/O HELPERS MODULE
 # ============================================================================
 # Purpose:
-#   Reusable utility functions and helpers
+#   Reusable utility functions and system helpers
 #   Includes file I/O, formatting, GPU utilities, and document processing
 # ============================================================================
 
@@ -16,7 +16,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 
 # Import configuration
-from config.settings import paths, file_config
+from Config.settings import paths, file_config
 
 logger = logging.getLogger(__name__)
 

@@ -13,8 +13,8 @@ from typing import Dict, Any, Optional
 from pathlib import Path
 
 # Local imports
-from config.settings import paths, logging_config
-from utils.helpers import write_json_atomic, append_jsonl
+from Config.settings import paths, logging_config
+from Utils.system_io_helpers import write_json_atomic, append_jsonl
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +28,7 @@ def _init_event_bus():
     global _event_bus, _live_monitoring_enabled
     if _event_bus is None:
         try:
-            from run.dashboard import event_bus
+            from Program.performance_monitor import event_bus
             _event_bus = event_bus
             _live_monitoring_enabled = True
         except ImportError:

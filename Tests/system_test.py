@@ -23,7 +23,7 @@ import psutil
 
 # Local imports
 sys.path.append(str(Path(__file__).parent))
-from core.pipeline import DocumentPipeline
+from Logic.rag_pipeline_orchestrator import DocumentPipeline
 
 
 # ============================================================================

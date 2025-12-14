@@ -1,11 +1,11 @@
 {
   "status": "IDLE",
-  "operation": "Stream complete for: whats invoice 5555",
-  "timestamp": 1765677848.90459,
-  "operation_id": "IDLE_1765677848.90459",
+  "operation": "Stream complete for: what is every detail in invoice 5555",
+  "timestamp": 1765679319.2636826,
+  "operation_id": "IDLE_1765679319.2636826",
   "metadata": {
-    "question": "whats invoice 5555",
-    "stream_time_s": 1.04,
-    "token_count": 83
+    "question": "what is every detail in invoice 5555",
+    "stream_time_s": 0.856,
+    "token_count": 60
   }
 }

@@ -24,9 +24,9 @@ from tkinter import ttk, filedialog, scrolledtext, messagebox
 import shutil
 
 # Local imports - configuration and utilities
-from config.settings import paths, performance_config, file_config
-from utils.helpers import get_document_files, count_document_files
-from core.pipeline import DocumentPipeline
+from Config.settings import paths, performance_config, file_config
+from Utils.system_io_helpers import get_document_files, count_document_files
+from Logic.rag_pipeline_orchestrator import DocumentPipeline
 
 
 # Logging configuration

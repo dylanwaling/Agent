@@ -25,9 +25,9 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext
 
 # Local imports - configuration and utilities
-from config.settings import paths, performance_config
-from utils.helpers import read_jsonl, format_timestamp, get_gpu_info
-from core.pipeline import DocumentPipeline
+from Config.settings import paths, performance_config
+from Utils.system_io_helpers import read_jsonl, format_timestamp, get_gpu_info
+from Logic.rag_pipeline_orchestrator import DocumentPipeline
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
@@ -361,12 +361,16 @@ class BaseMonitor:
                 for item in new_items[-new_count:]:
                     self._add_item_to_display(item, self._format_func)
                 
-                # Update items list
+                # Update items list BEFORE updating stats
                 self.items = new_items
                 
                 # Update stats if the method exists
                 if hasattr(self, '_update_stats'):
                     self._update_stats()
+            
+            # Always update stats to keep them current even if no new items
+            elif hasattr(self, '_update_stats'):
+                self._update_stats()
         except Exception as e:
             logger.error(f"Error during monitor refresh: {e}")
         
@@ -1079,20 +1083,19 @@ class QuestionInputMonitor(BaseMonitor):
         if op_type == 'question_input':
             metadata = operation_data.get('metadata', {})
             question = metadata.get('question', operation_data.get('operation', 'N/A'))
-            if question and len(question) > 3:
-                q_data = {
-                    'question': question,
-                    'time': datetime.fromtimestamp(operation_data.get('timestamp', 0)).strftime('%H:%M:%S'),
-                    'length': metadata.get('question_length', len(question)),
-                    'streaming': metadata.get('streaming', False)
-                }
-                self.items.append(q_data)
-                self._add_item_to_display(q_data, lambda q: [
-                    f"[{q['time']}] ({q['length']} chars) {'[STREAMING]' if q.get('streaming') else ''}",
-                    f"  {q['question']}",
-                    ""
-                ])
-                self._update_stats()
+            q_data = {
+                'question': question,
+                'time': datetime.fromtimestamp(operation_data.get('timestamp', 0)).strftime('%H:%M:%S'),
+                'length': metadata.get('question_length', len(question)),
+                'streaming': metadata.get('streaming', False)
+            }
+            self.items.append(q_data)
+            self._add_item_to_display(q_data, lambda q: [
+                f"[{q['time']}] ({q['length']} chars) {'[STREAMING]' if q.get('streaming') else ''}",
+                f"  {q['question']}",
+                ""
+            ])
+            self._update_stats()
     
     def _update_stats(self):
         """
@@ -1127,13 +1130,12 @@ class QuestionInputMonitor(BaseMonitor):
             if op_type == 'question_input':
                 metadata = op.get('metadata', {})
                 question = metadata.get('question', op.get('operation', 'N/A'))
-                if question and len(question) > 3:
-                    questions.append({
-                        'question': question,
-                        'time': datetime.fromtimestamp(op.get('timestamp', 0)).strftime('%H:%M:%S'),
-                        'length': metadata.get('question_length', len(question)),
-                        'streaming': metadata.get('streaming', False)
-                    })
+                questions.append({
+                    'question': question,
+                    'time': datetime.fromtimestamp(op.get('timestamp', 0)).strftime('%H:%M:%S'),
+                    'length': metadata.get('question_length', len(question)),
+                    'streaming': metadata.get('streaming', False)
+                })
         return questions
 
 

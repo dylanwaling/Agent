@@ -11,11 +11,11 @@ from pathlib import Path
 from typing import Optional, List, Dict, Any
 
 # Local imports
-from config.settings import paths, model_config, logging_config
-from .analytics import AnalyticsLogger
-from .components import ComponentInitializer
-from .document_processor import DocumentProcessor
-from .search_engine import SearchEngine
+from Config.settings import paths, model_config, logging_config
+from Analytics.operation_logger_tracker import AnalyticsLogger
+from Logic.model_component_initializer import ComponentInitializer
+from Logic.document_ingestion_handler import DocumentProcessor
+from Logic.semantic_search_qa_engine import SearchEngine
 
 logger = logging.getLogger(__name__)
 
