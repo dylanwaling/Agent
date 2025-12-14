@@ -1,33 +1,45 @@
-pydantic==1.10.14
-lancedb==0.8.21
-sentence-transformers
-# PyTorch GPU support (install separately):
-# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-# or for CUDA 12.1:
-# pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
-markdown
-python-docx
-openpyxl
-pdfplumber
-Pillow
-beautifulsoup4
-easyocr
-PyMuPDF
-streamlit
-flask
-requests
-ollama
-python-dotenv
-docling
-tiktoken
-transformers
-langchain
-langchain-community
-langchain-core
-langchain-ollama
-langchain-huggingface
-# GPU acceleration (choose one):
-# faiss-cpu          # CPU-only (current)
-faiss-gpu            # GPU acceleration for vector search
-# faiss-gpu==1.7.4   # Specific version if needed
-langsmith
+# Document Q&A Agent - Production Requirements
+# Professional-grade dependencies for AI-powered document processing
+
+# Core Framework Dependencies
+langchain>=0.1.0
+langchain-community>=0.0.20
+langchain-core>=0.1.0
+langchain-ollama>=0.1.0
+langchain-huggingface>=0.0.1
+
+# Document Processing & AI Models
+docling>=1.0.0
+sentence-transformers>=2.2.0
+transformers>=4.20.0
+ollama>=0.1.0
+
+# Vector Database & Search
+faiss-gpu>=1.7.0           # GPU acceleration for vector search
+# faiss-cpu>=1.7.0         # Alternative: CPU-only version
+
+# Document Format Support
+python-docx>=0.8.11
+openpyxl>=3.0.9
+PyMuPDF>=1.23.0
+Pillow>=9.0.0
+markdown>=3.4.0
+
+# Desktop GUI Framework
+tkinter-tooltip>=2.0.0     # Enhanced GUI components
+psutil>=5.9.0              # System monitoring
+
+# System Utilities
+python-dotenv>=0.19.0
+requests>=2.28.0
+pathlib2>=2.5.2           # Enhanced path handling
+
+# Optional: GPU Support (install separately if needed)
+# torch>=2.0.0 --index-url https://download.pytorch.org/whl/cu118
+# torchvision>=0.15.0 --index-url https://download.pytorch.org/whl/cu118
+# torchaudio>=2.0.0 --index-url https://download.pytorch.org/whl/cu118
+
+# Development & Testing (optional)
+# pytest>=7.0.0
+# black>=22.0.0
+# flake8>=5.0.0

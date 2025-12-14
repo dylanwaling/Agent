@@ -2,38 +2,43 @@
 
 ## System Architecture
 
+The Document Q&A Agent is built using a modern, modular architecture designed for professional document processing and AI-powered question answering.
+
 ```
 ┌─────────────────────────────────────────────────────────────────┐
-│                         Entry Points                             │
+│                       Entry Points Layer                         │
 ├─────────────────────────────────────────────────────────────────┤
-│  app_tkinter.py          backend_live.py       backend_debug.py │
-│  (Desktop GUI)           (Monitoring GUI)      (Debug Utils)    │
-└────────────────┬─────────────────┬─────────────────┬───────────┘
-                 │                 │                 │
-                 └─────────────────┴─────────────────┘
-                           │
-                           ▼
+│  launcher.py         program/              tests/              │
+│  (Interactive)       (Desktop GUI)         (Validation)         │
+└─────────────┬─────────────────┬─────────────────┬──────────────┘
+              │                 │                 │
+              └─────────────────┴─────────────────┘
+                        │
+                        ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│              Backward Compatibility Layer                        │
+│                     Core Logic Layer                             │
 ├─────────────────────────────────────────────────────────────────┤
-│  backend_logic.py     config.py          utils.py               │
-│  (Re-exports)         (Re-exports)       (Re-exports)           │
-└────────────────┬──────────────┬──────────────┬─────────────────┘
-                 │              │              │
-                 ▼              ▼              ▼
-┌────────────────────┐  ┌─────────────┐  ┌──────────────┐
-│    Core Package    │  │   Config    │  │    Utils     │
-│                    │  │  Package    │  │   Package    │
-├────────────────────┤  ├─────────────┤  ├──────────────┤
-│ • Analytics        │  │ • Settings  │  │ • Helpers    │
-│ • Components       │  │ • Paths     │  │ • I/O        │
-│ • Doc Processor    │  │ • Models    │  │ • Formatting │
-│ • Search Engine    │  │ • Search    │  │ • GPU Utils  │
-│ • Pipeline         │  │ • Perf      │  │ • Validation │
-└────────────────────┘  └─────────────┘  └──────────────┘
+│  logic/rag_pipeline_orchestrator.py   (DocumentPipeline)        │
+│  logic/model_component_initializer.py  (ComponentInitializer)   │
+│  logic/document_ingestion_handler.py   (DocumentProcessor)      │
+│  logic/semantic_search_qa_engine.py    (SearchEngine)           │
+└─────────────┬─────────────────┬─────────────────┬──────────────┘
+              │                 │                 │
+              ▼                 ▼                 ▼
+┌──────────────────┐  ┌─────────────────┐  ┌────────────────────┐
+│   Configuration  │  │   Monitoring    │  │     Utilities      │
+│     Package      │  │    Package      │  │     Package        │
+├──────────────────┤  ├─────────────────┤  ├────────────────────┤
+│ • settings.py    │  │ • analytics/    │  │ • system_io_helpers│
+│ • Model configs  │  │ • monitor/      │  │ • File I/O         │
+│ • Search params  │  │ • Event bus     │  │ • GPU utilities    │
+│ • Performance    │  │ • Live GUI      │  │ • Formatting       │
+└──────────────────┘  └─────────────────┘  └────────────────────┘
 ```
 
-## Core Package Architecture
+## Core Pipeline Architecture
+
+### DocumentPipeline Coordinator
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
@@ -43,233 +48,186 @@
          │                 │                  │
          ▼                 ▼                  ▼
 ┌─────────────────┐ ┌─────────────────┐ ┌────────────────────┐
-│ AnalyticsLogger │ │ComponentInit.   │ │ DocumentProcessor  │
+│ ComponentInit.  │ │DocumentProcessor│ │   SearchEngine     │
 │                 │ │                 │ │                    │
-│ • log_operation │ │ • GPU detect    │ │ • process_all()    │
-│ • update_status │ │ • Init LLM      │ │ • load_index()     │
-│ • event_bus     │ │ • Init embed    │ │ • save_index()     │
-└─────────────────┘ │ • Init splitter │ └────────────────────┘
+│ • GPU detect    │ │ • process_all() │ │ • semantic_search()│
+│ • Init LLM      │ │ • load_index()  │ │ • relevance_filter │
+│ • Init embeddings│ │ • save_index() │ │ • context_building │
+│ • Init splitter │ │ • Docling parse │ │ • LLM generation   │
+└─────────────────┘ └─────────────────┘ └────────────────────┘
+         │                 │                  │
+         └─────────────────┴──────────────────┘
+                           │
+                           ▼
+                  ┌─────────────────┐
+                  │ AnalyticsLogger │
+                  │                 │
+                  │ • log_operation │
+                  │ • update_status │
+                  │ • event_bus     │
+                  └─────────────────┘
+```
+
+## Data Flow Architecture
+
+### Document Processing Pipeline
+```
+User Upload → File Validation → Document Processing → Vector Index
+     │              │                    │                │
+     ▼              ▼                    ▼                ▼
+┌─────────┐ ┌─────────────┐ ┌─────────────────┐ ┌───────────────┐
+│ File    │ │ Format      │ │ Docling         │ │ FAISS Index   │
+│ Upload  │ │ Check       │ │ Conversion      │ │ Storage       │
+│ (GUI)   │ │ (Utils)     │ │ (Components)    │ │ (Processor)   │
+└─────────┘ └─────────────┘ └─────────────────┘ └───────────────┘
+     │              │                    │                │
+     └──────────────┴────────────────────┴────────────────┘
+                               │
+                               ▼
+                    ┌─────────────────┐
+                    │ Analytics       │
+                    │ Logging         │
                     └─────────────────┘
-                              │
-                              ▼
-                    ┌──────────────────┐
-                    │  SearchEngine    │
-                    │                  │
-                    │ • search()       │
-                    │ • ask()          │
-                    │ • ask_streaming()│
-                    └──────────────────┘
 ```
 
-## Data Flow
-
-### Document Processing Flow
+### Question-Answer Pipeline  
 ```
-User Upload
-    │
-    ▼
-DocumentProcessor.process_all_documents()
-    │
-    ├─→ Read files (TXT, PDF, DOCX)
-    │   └─→ Use Docling for non-text files
-    │
-    ├─→ Split into chunks
-    │   └─→ RecursiveCharacterTextSplitter
-    │
-    ├─→ Generate embeddings
-    │   └─→ HuggingFaceEmbeddings (all-MiniLM-L6-v2)
-    │
-    ├─→ Build FAISS index
-    │   └─→ Optimize for GPU if available
-    │
-    └─→ Save to disk
-        └─→ data/index/faiss_index/
+User Query → Embedding → Vector Search → Context Build → LLM → Response
+     │           │            │             │            │        │
+     ▼           ▼            ▼             ▼            ▼        ▼
+┌─────────┐ ┌─────────┐ ┌─────────────┐ ┌─────────┐ ┌────────┐ ┌────────┐
+│ Question│ │ Query   │ │ FAISS       │ │ Relevance│ │ Ollama │ │ Stream │
+│ Input   │ │ Vector  │ │ Similarity  │ │ Filter   │ │ LLM    │ │ Output │
+│ (GUI)   │ │ (HF)    │ │ Search      │ │ (Custom) │ │ (API)  │ │ (GUI)  │
+└─────────┘ └─────────┘ └─────────────┘ └─────────┘ └────────┘ └────────┘
 ```
 
-### Question Answering Flow
+### Real-time Monitoring Flow
 ```
-User Question
-    │
-    ▼
-SearchEngine.ask(question)
-    │
-    ├─→ 1. Embed query
-    │   └─→ HuggingFaceEmbeddings
-    │
-    ├─→ 2. FAISS similarity search
-    │   └─→ Top K results (K=100)
-    │
-    ├─→ 3. Relevance filtering
-    │   ├─→ Filename matching (strong/weak)
-    │   └─→ Score thresholding
-    │
-    ├─→ 4. Context building
-    │   └─→ Top 8 sources, max 3500 chars
-    │
-    ├─→ 5. LLM generation
-    │   └─→ Ollama (qwen2.5:1.5b)
-    │
-    └─→ 6. Return answer + sources
-        └─→ {answer: str, sources: list}
+Operation Events → Analytics Logger → Event Bus → Live GUI
+       │               │                │           │
+       ▼               ▼                ▼           ▼
+┌─────────────┐ ┌─────────────┐ ┌─────────────┐ ┌─────────────┐
+│ System      │ │ JSONL       │ │ Threading   │ │ Tkinter     │
+│ Operations  │ │ History     │ │ Queue       │ │ Monitor     │
+└─────────────┘ └─────────────┘ └─────────────┘ └─────────────┘
 ```
 
-## Analytics & Monitoring Flow
+## Technology Stack Details
 
-```
-Any Operation
-    │
-    ▼
-AnalyticsLogger.log_operation()
-    │
-    ├─→ Append to operation_history.jsonl
-    │   └─→ JSONL format for easy parsing
-    │
-    ├─→ Update pipeline_status.json
-    │   └─→ Atomic write for safety
-    │
-    └─→ Publish to event_bus
-        └─→ Real-time monitoring GUI
-            └─→ backend_live.py displays
-```
+### **Core AI/ML Technologies**
+- **Document Processing**: Docling (IBM Research) - RT-DETR + TableFormer
+- **Embeddings**: HuggingFace all-MiniLM-L6-v2 (384 dimensions)
+- **Vector Search**: FAISS (Facebook AI) with GPU acceleration
+- **LLM**: Ollama qwen2.5:1.5b (local inference)
+- **Text Processing**: LangChain RecursiveCharacterTextSplitter
 
-## Component Dependencies
+### **Desktop Application Stack**
+- **GUI Framework**: Python Tkinter with custom components
+- **Threading**: Background processing for non-blocking operations
+- **Monitoring**: Real-time event bus with live GUI updates
+- **File I/O**: Atomic operations with JSONL logging
 
-```
-┌─────────────────────────────────────────────────────────────┐
-│                         pipeline.py                          │
-│                    (DocumentPipeline)                        │
-└──────────────────────┬──────────────────────────────────────┘
-                       │
-       ┌───────────────┼───────────────┐
-       │               │               │
-       ▼               ▼               ▼
-┌──────────────┐ ┌─────────────┐ ┌──────────────┐
-│ analytics.py │ │components.py│ │doc_processor.│
-└──────┬───────┘ └──────┬──────┘ └───────┬──────┘
-       │                │                 │
-       │                │                 └───────┐
-       │                │                         │
-       ▼                ▼                         ▼
-┌──────────────┐ ┌──────────────┐       ┌────────────────┐
-│   config     │ │    utils     │       │search_engine.py│
-└──────────────┘ └──────────────┘       └────────────────┘
-```
+### **Configuration & Utilities**
+- **Settings Management**: Centralized dataclass-based configuration
+- **Logging**: Structured operation history with event categorization
+- **System Utilities**: GPU detection, memory management, file validation
+- **Error Handling**: Graceful fallbacks with comprehensive logging
 
-## Technology Stack
+## Component Integration Patterns
 
-### Core Technologies
-- **Python 3.x**: Main programming language
-- **Docling**: Document conversion (PDF, DOCX → text)
-- **LangChain**: Text processing and LLM integration
-- **FAISS**: Vector similarity search (Facebook AI)
-- **Ollama**: Local LLM inference (qwen2.5:1.5b)
-- **HuggingFace**: Embeddings (all-MiniLM-L6-v2)
+### **Initialization Pattern**
+```python
+pipeline = DocumentPipeline()
+    └─→ components = ComponentInitializer()
+        ├─→ Detect GPU/CPU capabilities
+        ├─→ Initialize embeddings model
+        ├─→ Initialize LLM connection
+        └─→ Setup text splitter
 
-### UI Technologies
-- **Tkinter**: Desktop GUI
-- **Threading**: Background processing
+    └─→ analytics = AnalyticsLogger()
+        ├─→ Setup operation logging
+        ├─→ Initialize event bus
+        └─→ Configure status tracking
 
-### Data Storage
-- **JSON**: Status and configuration
-- **JSONL**: Operation history
-- **FAISS Index**: Vector embeddings (binary)
-- **PKL**: FAISS metadata
+    └─→ doc_processor = DocumentProcessor()
+        └─→ Setup document processing pipeline
 
-### Hardware Support
-- **GPU**: CUDA support for FAISS and embeddings
-- **CPU**: Fallback for systems without GPU
-
-## Configuration Hierarchy
-
-```
-config/settings.py
-    │
-    ├─→ Paths
-    │   ├─→ DATA_DIR
-    │   ├─→ DOCS_DIR
-    │   ├─→ INDEX_DIR
-    │   └─→ STATUS_FILE, HISTORY_FILE
-    │
-    ├─→ ModelConfig
-    │   ├─→ EMBEDDING_MODEL
-    │   ├─→ LLM_MODEL
-    │   └─→ CHUNK_SIZE, CHUNK_OVERLAP
-    │
-    ├─→ SearchConfig
-    │   ├─→ SEARCH_K
-    │   ├─→ SCORE_THRESHOLD
-    │   └─→ MAX_CONTEXT_LENGTH
-    │
-    ├─→ PerformanceConfig
-    │   ├─→ GPU_MEMORY_THRESHOLD
-    │   └─→ MAX_FILE_SIZE_MB
-    │
-    ├─→ FileConfig
-    │   └─→ SUPPORTED_EXTENSIONS
-    │
-    └─→ LoggingConfig
-        └─→ OPERATION_TYPES, STATUS_TYPES
+    └─→ search_engine = SearchEngine()
+        └─→ Setup search and Q&A pipeline
 ```
 
-## Error Handling Strategy
+### **Configuration Injection Pattern**
+All components receive configuration through centralized settings:
+- **Path Configuration**: Data directories, index locations
+- **Model Configuration**: LLM settings, embedding parameters  
+- **Search Configuration**: Relevance thresholds, context limits
+- **Performance Configuration**: GPU settings, memory limits
 
+### **Event-Driven Monitoring Pattern**
+Operations are logged through a centralized analytics system:
+- **Operation Tracking**: Every major operation is logged with timing
+- **Status Broadcasting**: Real-time status updates via event bus
+- **Performance Metrics**: Memory usage, processing times, throughput
+
+## Scalability & Performance Architecture
+
+### **Memory Management Strategy**
 ```
-Try/Except Blocks
-    │
-    ├─→ Component Initialization
-    │   └─→ Graceful fallback to CPU
-    │
-    ├─→ Document Processing
-    │   └─→ Skip failed files, continue
-    │
-    ├─→ Search Operations
-    │   └─→ Return empty results
-    │
-    ├─→ LLM Generation
-    │   └─→ Return error message
-    │
-    └─→ Analytics Logging
-        └─→ Log errors but continue
+GPU Memory (if available)
+├─→ Embeddings Model (1-2GB)
+├─→ FAISS Index (scales with docs)
+└─→ LLM Context (managed by Ollama)
+
+System Memory
+├─→ Document Processing (chunked)
+├─→ GUI Components (minimal)
+└─→ Monitoring Data (bounded queues)
 ```
 
-## Scalability Considerations
+### **Processing Optimization**
+- **Document Chunking**: Dynamic sizing based on GPU availability
+- **Batch Processing**: Multiple documents processed efficiently
+- **Streaming Responses**: Real-time answer generation
+- **Index Optimization**: FAISS GPU acceleration when available
 
-### Current Limits
-- **Documents**: Hundreds of documents (tested)
-- **Index Size**: Limited by RAM/GPU memory
-- **Query Speed**: <1s for typical searches
-- **Concurrent Users**: Single user (desktop app)
+### **Concurrency Strategy**
+- **Background Processing**: Non-blocking document processing
+- **GUI Threading**: Responsive interface during operations  
+- **Event Bus**: Thread-safe communication between components
+- **Resource Locking**: Safe access to shared resources
 
-### Future Enhancements
-- **Distributed FAISS**: For larger document sets
-- **Multiple Indexes**: Per-category indexing
-- **Caching**: Frequently asked questions
-- **Async Processing**: Non-blocking operations
-- **Multi-user**: Web API endpoint
+## Security & Data Privacy
 
-## Security Considerations
+### **Local-First Architecture**
+- **No External APIs**: All processing happens locally
+- **Data Isolation**: Documents never leave the local machine
+- **Secure Storage**: FAISS indices stored locally
+- **Process Isolation**: Ollama runs as separate service
 
-- **Local Processing**: All data stays on local machine
-- **No Network**: No external API calls for processing
-- **File Access**: Limited to designated folders
-- **Deserialization**: Marked as dangerous but local-only
+### **File System Security**
+- **Sandboxed Paths**: All operations within designated directories
+- **Input Validation**: File type and size restrictions
+- **Atomic Operations**: Safe file writes with rollback capability
+- **Permission Checks**: Verify read/write access before operations
 
-## Performance Optimizations
+## Extension Points & Future Architecture
 
-1. **GPU Acceleration**
-   - FAISS index on GPU
-   - Embeddings on GPU
-   - Automatic fallback to CPU
+### **Modular Design Benefits**
+- **Plugin Architecture**: Easy addition of new document formats
+- **Model Swapping**: Simple LLM or embedding model replacement
+- **UI Extensions**: Additional interfaces (web, CLI, API)
+- **Storage Backends**: Alternative to FAISS for specialized use cases
 
-2. **Memory Management**
-   - Chunked document processing
-   - GPU memory limits for 6GB cards
-   - Streaming responses
+### **Planned Architectural Enhancements**
+- **Multi-Index Support**: Topic-based or user-based index separation  
+- **Distributed Processing**: Scale beyond single-machine limits
+- **API Layer**: REST API for external integrations
+- **Advanced Monitoring**: Metrics collection and analysis dashboard
 
-3. **Efficient Search**
-   - FAISS for fast similarity search
-   - Score-based filtering
-   - Context length limits
+---
+
+**Architecture Philosophy**: Clean separation of concerns with professional error handling, comprehensive monitoring, and extensible design patterns for enterprise-grade document processing.
 
 4. **Atomic Operations**
    - Atomic file writes

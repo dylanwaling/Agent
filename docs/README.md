@@ -1,29 +1,19 @@
-# Document Q&A Pipeline
+# Document Q&A Agent
 
-A robust document processing and question-answering system using Docling, LangChain, FAISS, and Flask with enhanced search capabilities.
+A professional-grade, AI-powered document question-answering system with desktop GUI, real-time monitoring, and advanced semantic search capabilities.
 
 ## 🚀 Quick Start
 
-1. **Install dependencies:**
-   ```bash
-   pip install -r docs/requirements.txt
-   ```
+### Prerequisites
+- **Python 3.8+** (recommended: 3.10+)
+- **Ollama** installed with `qwen2.5:1.5b` model
+- **Optional**: CUDA-capable GPU for acceleration
 
-2. **Start Ollama (if not running):**
-   ```bash
-   ollama serve
-   ollama pull llama3:latest
-   ```
-
-3. **Run the web application:**
-   ```bash
-   python app.py
-   ```
-
-4. **Or run comprehensive testing:**
-   ```bash
-   python backend_debug.py
-   ```
+### Installation
+1. Clone the repository
+2. Install dependencies: `pip install -r docs/requirements.txt`
+3. Install Ollama and pull model: `ollama pull qwen2.5:1.5b`
+4. Run: `python launcher.py`
 
 ## 📁 Project Structure
 
