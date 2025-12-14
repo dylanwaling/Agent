@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""
-Utility Functions Module
-Reusable helper functions for the Document Q&A Agent system
-"""
+# ============================================================================
+# HELPERS MODULE
+# ============================================================================
+# Purpose:
+#   Reusable utility functions and helpers
+#   Includes file I/O, formatting, GPU utilities, and document processing
+# ============================================================================
 
 import os
 import json
@@ -13,7 +16,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime
 
 # Import configuration
-from config import paths, file_config
+from config.settings import paths, file_config
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
-"""
-Configuration Management Module
-Centralized configuration for the Document Q&A Agent system
-"""
+# ============================================================================
+# SETTINGS MODULE
+# ============================================================================
+# Purpose:
+#   Centralized configuration for the Document Q&A Agent system
+#   Defines all paths, model configs, search params, and performance settings
+# ============================================================================
 
 from pathlib import Path
 from dataclasses import dataclass

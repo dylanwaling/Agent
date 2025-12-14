@@ -23,7 +23,7 @@ import psutil
 
 # Local imports
 sys.path.append(str(Path(__file__).parent))
-from backend_logic import DocumentPipeline
+from core.pipeline import DocumentPipeline
 
 
 # ============================================================================

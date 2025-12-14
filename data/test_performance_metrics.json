@@ -1,0 +1,202 @@
+{
+  "session_start": 1765676545.1379397,
+  "session_duration": 30.571229219436646,
+  "start_memory_mb": 574.65625,
+  "end_memory_mb": 949.859375,
+  "metrics": [
+    {
+      "operation": "test_system_components",
+      "start_time": 1765676545.1379397,
+      "end_time": 1765676551.1741788,
+      "duration": 6.036239147186279,
+      "memory_start": 574.65625,
+      "memory_end": 934.33203125,
+      "memory_delta": 359.67578125,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "inspect_database_content",
+      "start_time": 1765676551.1741788,
+      "end_time": 1765676551.1741788,
+      "duration": 0.0,
+      "memory_start": 934.33203125,
+      "memory_end": 934.33203125,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "test_initialization",
+      "start_time": 1765676551.1741788,
+      "end_time": 1765676552.9723582,
+      "duration": 1.7981793880462646,
+      "memory_start": 934.33203125,
+      "memory_end": 949.2734375,
+      "memory_delta": 14.94140625,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "test_document_processing",
+      "start_time": 1765676552.9723582,
+      "end_time": 1765676552.9743586,
+      "duration": 0.0020003318786621094,
+      "memory_start": 949.2734375,
+      "memory_end": 949.2734375,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "test_search_functionality",
+      "start_time": 1765676552.9743586,
+      "end_time": 1765676553.5466542,
+      "duration": 0.5722956657409668,
+      "memory_start": 949.2734375,
+      "memory_end": 949.66796875,
+      "memory_delta": 0.39453125,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "test_qa_functionality",
+      "start_time": 1765676553.5466542,
+      "end_time": 1765676563.848804,
+      "duration": 10.302149772644043,
+      "memory_start": 949.66796875,
+      "memory_end": 949.72265625,
+      "memory_delta": 0.0546875,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "test_edge_cases",
+      "start_time": 1765676563.848804,
+      "end_time": 1765676575.5552597,
+      "duration": 11.706455707550049,
+      "memory_start": 949.72265625,
+      "memory_end": 949.859375,
+      "memory_delta": 0.13671875,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    },
+    {
+      "operation": "run_performance_test",
+      "start_time": 1765676575.5552597,
+      "end_time": 1765676575.7058482,
+      "duration": 0.1505885124206543,
+      "memory_start": 949.859375,
+      "memory_end": 949.859375,
+      "memory_delta": 0.0,
+      "success": true,
+      "error": null,
+      "metadata": {}
+    }
+  ],
+  "profiles": {
+    "test_document_processing": {
+      "section_name": "test_document_processing",
+      "total_time": 0.0020003318786621094,
+      "call_count": 1,
+      "avg_time": 0.0020003318786621094,
+      "min_time": 0.0020003318786621094,
+      "max_time": 0.0020003318786621094,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "test_qa_functionality": {
+      "section_name": "test_qa_functionality",
+      "total_time": 10.302149772644043,
+      "call_count": 1,
+      "avg_time": 10.302149772644043,
+      "min_time": 10.302149772644043,
+      "max_time": 10.302149772644043,
+      "total_memory": 0.0546875,
+      "avg_memory": 0.0546875,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "test_edge_cases": {
+      "section_name": "test_edge_cases",
+      "total_time": 11.706455707550049,
+      "call_count": 1,
+      "avg_time": 11.706455707550049,
+      "min_time": 11.706455707550049,
+      "max_time": 11.706455707550049,
+      "total_memory": 0.13671875,
+      "avg_memory": 0.13671875,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "test_system_components": {
+      "section_name": "test_system_components",
+      "total_time": 6.036239147186279,
+      "call_count": 1,
+      "avg_time": 6.036239147186279,
+      "min_time": 6.036239147186279,
+      "max_time": 6.036239147186279,
+      "total_memory": 359.67578125,
+      "avg_memory": 359.67578125,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "test_search_functionality": {
+      "section_name": "test_search_functionality",
+      "total_time": 0.5722956657409668,
+      "call_count": 1,
+      "avg_time": 0.5722956657409668,
+      "min_time": 0.5722956657409668,
+      "max_time": 0.5722956657409668,
+      "total_memory": 0.39453125,
+      "avg_memory": 0.39453125,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "inspect_database_content": {
+      "section_name": "inspect_database_content",
+      "total_time": 0.0,
+      "call_count": 1,
+      "avg_time": 0.0,
+      "min_time": 0.0,
+      "max_time": 0.0,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "run_performance_test": {
+      "section_name": "run_performance_test",
+      "total_time": 0.1505885124206543,
+      "call_count": 1,
+      "avg_time": 0.1505885124206543,
+      "min_time": 0.1505885124206543,
+      "max_time": 0.1505885124206543,
+      "total_memory": 0.0,
+      "avg_memory": 0.0,
+      "success_rate": 100.0,
+      "errors": []
+    },
+    "test_initialization": {
+      "section_name": "test_initialization",
+      "total_time": 1.7981793880462646,
+      "call_count": 1,
+      "avg_time": 1.7981793880462646,
+      "min_time": 1.7981793880462646,
+      "max_time": 1.7981793880462646,
+      "total_memory": 14.94140625,
+      "avg_memory": 14.94140625,
+      "success_rate": 100.0,
+      "errors": []
+    }
+  }
+}

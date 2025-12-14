@@ -24,9 +24,9 @@ from tkinter import ttk, filedialog, scrolledtext, messagebox
 import shutil
 
 # Local imports - configuration and utilities
-from config import paths, performance_config, file_config
-from utils import get_document_files, count_document_files
-from backend_logic import DocumentPipeline
+from config.settings import paths, performance_config, file_config
+from utils.helpers import get_document_files, count_document_files
+from core.pipeline import DocumentPipeline
 
 
 # Logging configuration
@@ -634,11 +634,10 @@ if __name__ == '__main__':
     # Launch live monitoring GUI (no console window needed)
     try:
         print("📊 Starting live system monitor GUI...")
-        # Get the directory where app.py is located
-        script_dir = Path(__file__).parent.absolute()
-        monitor_script = script_dir / "backend_live.py"
+        # Get the project root directory
+        project_root = Path(__file__).parent.parent.absolute()
         
-        # Launch GUI without console window (pythonw.exe for Windows)
+        # Launch monitoring dashboard as module
         python_exe = sys.executable
         # Use pythonw.exe instead of python.exe to hide console
         if python_exe.endswith('python.exe'):
@@ -647,8 +646,8 @@ if __name__ == '__main__':
             pythonw_exe = python_exe
         
         subprocess.Popen(
-            [pythonw_exe, str(monitor_script)],
-            cwd=str(script_dir),
+            [pythonw_exe, "-m", "monitoring.dashboard"],
+            cwd=str(project_root),
             creationflags=subprocess.CREATE_NO_WINDOW if hasattr(subprocess, 'CREATE_NO_WINDOW') else 0
         )
         print("✅ Live monitor GUI launched")

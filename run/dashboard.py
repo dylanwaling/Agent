@@ -25,9 +25,9 @@ import tkinter as tk
 from tkinter import ttk, scrolledtext
 
 # Local imports - configuration and utilities
-from config import paths, performance_config
-from utils import read_jsonl, format_timestamp, get_gpu_info
-from backend_logic import DocumentPipeline
+from config.settings import paths, performance_config
+from utils.helpers import read_jsonl, format_timestamp, get_gpu_info
+from core.pipeline import DocumentPipeline
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
