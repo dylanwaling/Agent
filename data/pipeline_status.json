@@ -1,11 +1,13 @@
 {
-  "status": "IDLE",
-  "operation": "Stream complete for: whastss 555",
-  "timestamp": 1765692336.7840471,
-  "operation_id": "IDLE_1765692336.7840471",
+  "status": "PROCESSING",
+  "operation": "Filtered search results: whast 1+1",
+  "timestamp": 1765692450.1918988,
+  "operation_id": "PROCESSING_1765692450.1918988",
   "metadata": {
-    "question": "whastss 555",
-    "stream_time_s": 2.882,
-    "token_count": 344
+    "query": "whast 1+1",
+    "total_candidates": 1,
+    "filtered_results": 0,
+    "score_threshold": 1.25,
+    "filter_time_s": 0.016
   }
 }
