@@ -1,11 +1,11 @@
 {
   "status": "IDLE",
-  "operation": "Stream complete for: whats in company_handbook",
-  "timestamp": 1765670353.2878022,
-  "operation_id": "IDLE_1765670353.2878022",
+  "operation": "Stream complete for: whats small_business_strategy_overview.",
+  "timestamp": 1765673212.598601,
+  "operation_id": "IDLE_1765673212.598601",
   "metadata": {
-    "question": "whats in company_handbook",
-    "stream_time_s": 5.686,
-    "token_count": 533
+    "question": "whats small_business_strategy_overview.",
+    "stream_time_s": 1.368,
+    "token_count": 117
   }
 }

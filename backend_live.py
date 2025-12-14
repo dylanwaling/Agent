@@ -24,23 +24,25 @@ import psutil
 import tkinter as tk
 from tkinter import ttk, scrolledtext
 
-# Local imports
+# Local imports - configuration and utilities
+from config import paths, performance_config
+from utils import read_jsonl, format_timestamp, get_gpu_info
 from backend_logic import DocumentPipeline
 
 # Logging configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# File paths
-STATUS_FILE = Path("data/pipeline_status.json")
-HISTORY_FILE = Path("data/operation_history.jsonl")
-INDEX_PATH = "data/index/faiss_index/index.faiss"
-DOCS_PATH = "data/documents"
+# File paths from configuration
+STATUS_FILE = paths.STATUS_FILE
+HISTORY_FILE = paths.HISTORY_FILE
+INDEX_PATH = str(paths.FAISS_INDEX_FILE)
+DOCS_PATH = str(paths.DOCS_DIR)
 
-# UI Configuration
-MAX_OPERATIONS_DISPLAY = 50
-QUEUE_PROCESS_INTERVAL_MS = 50
-STATUS_UPDATE_INTERVAL_MS = 1000
+# UI Configuration from config
+MAX_OPERATIONS_DISPLAY = performance_config.MAX_OPERATIONS_DISPLAY
+QUEUE_PROCESS_INTERVAL_MS = performance_config.QUEUE_PROCESS_INTERVAL_MS
+STATUS_UPDATE_INTERVAL_MS = performance_config.STATUS_UPDATE_INTERVAL_MS
 
 
 # ============================================================================
@@ -561,16 +563,11 @@ class LiveMonitorGUI:
         Returns:
             List of operation dictionaries
         """
-        operations = []
         try:
-            if self.history_file.exists():
-                with open(self.history_file, 'r', encoding='utf-8') as f:
-                    for line in f:
-                        if line.strip():
-                            operations.append(json.loads(line))
+            return read_jsonl(self.history_file)
         except Exception as e:
             logger.error(f"Error loading historical operations: {e}")
-        return operations
+            return []
     
     def _on_operation_event(self, operation_data):
         """
@@ -650,16 +647,8 @@ class LiveMonitorGUI:
         Returns:
             String with GPU name and memory info, or error message
         """
-        try:
-            import torch
-            if torch.cuda.is_available():
-                gpu_name = torch.cuda.get_device_name(0)
-                gpu_memory = torch.cuda.get_device_properties(0).total_memory / (1024**3)
-                gpu_memory_used = torch.cuda.memory_allocated(0) / (1024**3)
-                return f"{gpu_name} ({gpu_memory_used:.1f}/{gpu_memory:.1f} GB)"
-            return "No GPU detected"
-        except:
-            return "GPU info unavailable"
+        gpu_info_dict = get_gpu_info()
+        return gpu_info_dict.get('message', 'GPU info unavailable')
     
     def format_uptime(self, seconds):
         """

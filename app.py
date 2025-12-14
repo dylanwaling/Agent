@@ -22,7 +22,9 @@ from pathlib import Path
 from flask import Flask, request, render_template_string, jsonify, redirect, url_for, Response
 from werkzeug.utils import secure_filename
 
-# Local imports
+# Local imports - configuration and utilities
+from config import paths, performance_config, file_config
+from utils import get_document_files, count_document_files
 from backend_logic import DocumentPipeline
 
 
@@ -33,8 +35,8 @@ logger = logging.getLogger(__name__)
 
 # Flask application configuration
 app = Flask(__name__)
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-app.config['UPLOAD_FOLDER'] = 'data/documents'
+app.config['MAX_CONTENT_LENGTH'] = performance_config.MAX_FILE_SIZE_MB * 1024 * 1024
+app.config['UPLOAD_FOLDER'] = str(paths.DOCS_DIR)
 
 
 # Global pipeline instance (lazy-loaded)
@@ -266,11 +268,11 @@ def clean_startup():
         bool: True if cleanup completed successfully, False on error
     """
     try:
-        index_dir = Path("data/index")
+        index_dir = paths.INDEX_DIR
         if index_dir.exists():
             # Check if index is complete
-            faiss_file = index_dir / "faiss_index" / "index.faiss"
-            pkl_file = index_dir / "faiss_index" / "index.pkl"
+            faiss_file = paths.FAISS_INDEX_FILE
+            pkl_file = paths.PKL_INDEX_FILE
             
             logger.info(f"Checking index files:")
             logger.info(f"FAISS file exists: {faiss_file.exists()} - {faiss_file}")
@@ -340,10 +342,8 @@ def get_documents():
     Returns:
         list: List of document filenames (empty list if directory doesn't exist)
     """
-    docs_dir = Path('data/documents')
-    if docs_dir.exists():
-        return [f.name for f in docs_dir.iterdir() if f.is_file()]
-    return []
+    doc_files = get_document_files()
+    return [f.name for f in doc_files]
 
 
 # ============================================================================
@@ -441,7 +441,7 @@ def remove_all_documents():
         session_data['status'] = {'type': 'loading', 'message': '�️ Removing all documents...'}
         
         # Clear documents directory
-        docs_dir = Path('data/documents')
+        docs_dir = paths.DOCS_DIR
         if docs_dir.exists():
             import shutil
             for file_path in docs_dir.iterdir():
@@ -450,7 +450,7 @@ def remove_all_documents():
                     logger.info(f"Deleted document: {file_path.name}")
         
         # Clear index directory
-        index_dir = Path('data/index')
+        index_dir = paths.INDEX_DIR
         if index_dir.exists():
             import shutil
             shutil.rmtree(index_dir, ignore_errors=True)
@@ -551,9 +551,8 @@ if __name__ == '__main__':
         print("   (App will continue without monitor)")
     
     # Check documents status
-    docs_dir = Path('data/documents')
-    if docs_dir.exists():
-        doc_count = len([f for f in docs_dir.iterdir() if f.is_file()])
+    doc_count = count_document_files()
+    if doc_count > 0:
         print(f"📄 Found {doc_count} documents ready for processing")
     else:
         print("📂 Documents directory will be created on first upload")

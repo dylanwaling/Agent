@@ -26,6 +26,18 @@ from langchain_ollama import OllamaLLM
 from langchain.schema import Document
 from langchain.prompts import PromptTemplate
 
+# Local imports - configuration and utilities
+from config import (
+    paths, model_config, search_config, 
+    logging_config, performance_config,
+    get_gpu_optimized_chunk_size, get_gpu_optimized_chunk_overlap
+)
+from utils import (
+    write_json_atomic, append_jsonl, read_text_file,
+    extract_clean_content, create_searchable_content, normalize_filename,
+    format_timestamp, get_gpu_info, should_optimize_for_gpu
+)
+
 # Local imports - event bus for live monitoring
 try:
     from backend_live import event_bus
@@ -59,21 +71,22 @@ class DocumentPipeline:
     # ------------------------------------------------------------------------
     
     def __init__(self, 
-                 docs_dir: str = "data/documents",
-                 index_dir: str = "data/index",
-                 model_name: str = "qwen2.5:1.5b"):
+                 docs_dir: Optional[str] = None,
+                 index_dir: Optional[str] = None,
+                 model_name: Optional[str] = None):
         
-        self.docs_dir = Path(docs_dir)
-        self.index_dir = Path(index_dir)
-        self.model_name = model_name
+        # Use config defaults if not provided
+        self.docs_dir = Path(docs_dir) if docs_dir else paths.DOCS_DIR
+        self.index_dir = Path(index_dir) if index_dir else paths.INDEX_DIR
+        self.model_name = model_name if model_name else model_config.LLM_MODEL
         
         # Create directories
         self.docs_dir.mkdir(parents=True, exist_ok=True)
         self.index_dir.mkdir(parents=True, exist_ok=True)
         
         # Status file for live monitoring
-        self.status_file = Path("data/pipeline_status.json")
-        self._update_status("IDLE", "System initialized")
+        self.status_file = paths.STATUS_FILE
+        self._update_status(logging_config.STATUS_TYPES['IDLE'], "System initialized")
         
         # Initialize components
         self._init_components()
@@ -108,13 +121,8 @@ class DocumentPipeline:
             }
             
             # Write to operation history (JSONL format for easy parsing)
-            history_file = self.status_file.parent / "operation_history.jsonl"
-            history_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            with open(history_file, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(log_entry, ensure_ascii=False) + '\n')
-                f.flush()
-                os.fsync(f.fileno())
+            history_file = paths.HISTORY_FILE
+            append_jsonl(history_file, log_entry)
             
             # Publish to event bus for real-time monitoring (push-based)
             if LIVE_MONITORING_ENABLED and event_bus:
@@ -140,24 +148,8 @@ class DocumentPipeline:
                 "metadata": metadata or {}
             }
             
-            # Ensure directory exists
-            self.status_file.parent.mkdir(parents=True, exist_ok=True)
-            
-            # Write to temp file first, then atomic rename (prevents partial reads)
-            temp_file = self.status_file.parent / f"status_{timestamp}.tmp"
-            
-            with open(temp_file, 'w', encoding='utf-8') as f:
-                json.dump(status_data, f, indent=2)
-                f.flush()
-                os.fsync(f.fileno())
-            
-            # Atomic rename (Windows-safe)
-            try:
-                if self.status_file.exists():
-                    self.status_file.unlink()
-            except:
-                pass
-            temp_file.rename(self.status_file)
+            # Write status atomically to prevent partial reads
+            write_json_atomic(self.status_file, status_data)
             
         except Exception as e:
             logger.error(f"Failed to update status: {e}")
@@ -219,16 +211,18 @@ class DocumentPipeline:
         self.converter = DocumentConverter()
         
         # Text splitter - optimized for GPU memory
-        chunk_size = 800 if hasattr(self, 'gpu_optimized') and self.gpu_optimized else 1000
+        gpu_optimized = hasattr(self, 'gpu_optimized') and self.gpu_optimized
+        chunk_size = get_gpu_optimized_chunk_size(gpu_optimized)
+        chunk_overlap = get_gpu_optimized_chunk_overlap(gpu_optimized)
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=chunk_size,
-            chunk_overlap=150 if chunk_size == 800 else 200,
+            chunk_overlap=chunk_overlap,
             length_function=len,
         )
         
         # Embeddings with GPU support
         embedding_kwargs = {
-            "model_name": "sentence-transformers/all-MiniLM-L6-v2"
+            "model_name": model_config.EMBEDDING_MODEL
         }
         
         # Add device specification if GPU is available
@@ -241,10 +235,10 @@ class DocumentPipeline:
         # LLM optimized for qwen2.5:1.5b - excellent reasoning performance
         self.llm = OllamaLLM(
             model=self.model_name,
-            temperature=0.3,      # Balanced for thoughtful but focused responses
-            num_ctx=4096,        # Larger context window for more document content
-            num_predict=800,     # Much longer responses for completeness
-            streaming=True,      # Enable streaming for word-by-word display
+            temperature=model_config.LLM_TEMPERATURE,
+            num_ctx=model_config.LLM_CONTEXT_WINDOW,
+            num_predict=model_config.LLM_MAX_TOKENS,
+            streaming=model_config.LLM_STREAMING,
         )        # Enhanced prompt template for thoughtful responses
         self.prompt_template = PromptTemplate(
             input_variables=["context", "question"],
@@ -660,7 +654,7 @@ Complete Answer:"""
     # Search & Query Methods
     # ------------------------------------------------------------------------
     
-    def search(self, query: str, score_threshold: float = 1.25, update_status: bool = True) -> List[Dict[str, Any]]:
+    def search(self, query: str, score_threshold: Optional[float] = None, update_status: bool = True) -> List[Dict[str, Any]]:
         """
         Search documents with relevance-based filtering.
         
@@ -674,6 +668,10 @@ Complete Answer:"""
         """
         search_start = time.time()
         
+        # Use default threshold from config if not provided
+        if score_threshold is None:
+            score_threshold = search_config.DEFAULT_SCORE_THRESHOLD
+        
         try:
             if not self.vectorstore:
                 return []
@@ -681,35 +679,36 @@ Complete Answer:"""
             # Log embedding query
             embed_start = time.time()
             self._log_operation(
-                operation_type="embedding_query",
+                operation_type=logging_config.OPERATION_TYPES['EMBEDDING_QUERY'],
                 operation=f"Embedding query: {query[:80]}",
                 metadata={
                     "query": query,
                     "query_length": len(query),
-                    "model": "all-MiniLM-L6-v2",
-                    "dimensions": 384,
+                    "model": model_config.EMBEDDING_MODEL,
+                    "dimensions": model_config.EMBEDDING_DIMENSION,
                     "device": getattr(self, 'device', 'cpu')
                 },
-                status="PROCESSING"
+                status=logging_config.STATUS_TYPES['PROCESSING']
             )
             
             # Use similarity search with score threshold for smart retrieval
-            docs_with_scores = self.vectorstore.similarity_search_with_score(query, k=100)
+            k_value = search_config.SEARCH_K
+            docs_with_scores = self.vectorstore.similarity_search_with_score(query, k=k_value)
             embed_time = time.time() - embed_start
             
             # Log FAISS search
             self._log_operation(
-                operation_type="faiss_search",
+                operation_type=logging_config.OPERATION_TYPES['FAISS_SEARCH'],
                 operation=f"FAISS search: {query[:80]}",
                 metadata={
                     "query": query,
-                    "k": 100,
+                    "k": k_value,
                     "num_results": len(docs_with_scores),
                     "index_size": self.vectorstore.index.ntotal if self.vectorstore else 0,
                     "search_time_ms": round(embed_time * 1000, 2),
                     "device": getattr(self, 'device', 'cpu')
                 },
-                status="PROCESSING"
+                status=logging_config.STATUS_TYPES['PROCESSING']
             )
             
             # Smart filtering with filename priority
@@ -721,15 +720,15 @@ Complete Answer:"""
                 filename = doc.metadata.get("filename", "").lower()
                 
                 # Check for exact filename matches with various transformations
-                query_normalized = query_lower.replace(" ", "_").replace("-", "_")
-                source_normalized = source.replace(" ", "_").replace("-", "_")
-                filename_normalized = filename.replace(" ", "_").replace("-", "_")
+                query_normalized = normalize_filename(query)
+                source_normalized = normalize_filename(source)
+                filename_normalized = normalize_filename(filename)
                 
                 # Strong filename match (exact or very close)
                 strong_filename_match = (
                     query_normalized in source_normalized or 
                     query_normalized in filename_normalized or
-                    source_normalized.replace("_", "").replace(".", "") in query_normalized.replace("_", "").replace(".", "") or
+                    source_normalized in query_normalized or
                     filename_normalized in query_normalized or
                     query_lower.replace(" ", "") in source.replace("_", "").replace("-", "").replace(".", "")
                 )
@@ -743,12 +742,12 @@ Complete Answer:"""
                 # Apply different thresholds based on match strength
                 if strong_filename_match:
                     # Very lenient for strong filename matches
-                    if score <= 2.5:
-                        relevant_docs.append((doc, score * 0.5))  # Boost score by halving it
+                    if score <= search_config.STRONG_MATCH_THRESHOLD:
+                        relevant_docs.append((doc, score * search_config.STRONG_MATCH_SCORE_BOOST))
                 elif weak_filename_match:
                     # Moderate threshold for weak filename matches  
-                    if score <= 2.0:
-                        relevant_docs.append((doc, score * 0.8))  # Small boost
+                    if score <= search_config.WEAK_MATCH_THRESHOLD:
+                        relevant_docs.append((doc, score * search_config.WEAK_MATCH_SCORE_BOOST))
                 elif score <= score_threshold:
                     # Strict threshold for content-only matches
                     relevant_docs.append((doc, score))
@@ -769,7 +768,7 @@ Complete Answer:"""
             
             # Log relevance filtering results
             self._log_operation(
-                operation_type="relevance_filter",
+                operation_type=logging_config.OPERATION_TYPES['RELEVANCE_FILTER'],
                 operation=f"Filtered search results: {query[:80]}",
                 metadata={
                     "query": query,
@@ -778,7 +777,7 @@ Complete Answer:"""
                     "score_threshold": score_threshold,
                     "filter_time_s": round(search_time, 3)
                 },
-                status="IDLE" if update_status else "PROCESSING"
+                status=logging_config.STATUS_TYPES['IDLE'] if update_status else logging_config.STATUS_TYPES['PROCESSING']
             )
             
             return results
