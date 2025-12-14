@@ -387,10 +387,6 @@ class LiveMonitorGUI:
         init_thread = threading.Thread(target=self.init_pipeline_async, daemon=True)
         init_thread.start()
         
-        # Start file watcher thread (watches for new operations from file)
-        self.watcher_thread = threading.Thread(target=self._file_watcher_loop, daemon=True)
-        self.watcher_thread.start()
-        
         # Start GUI update processor (processes queued operations on GUI thread)
         self._process_operation_queue()
         
@@ -585,36 +581,6 @@ class LiveMonitorGUI:
         """
         # Add to queue for GUI thread processing
         self.operation_queue.put(operation_data)
-    
-    def _file_watcher_loop(self):
-        """
-        Watch file for new operations (for operations not using event bus).
-        
-        Monitors the history file for size changes and loads new operations.
-        Runs in a background thread.
-        """
-        last_size = 0
-        if self.history_file.exists():
-            last_size = self.history_file.stat().st_size
-        
-        while self.running:
-            try:
-                if self.history_file.exists():
-                    current_size = self.history_file.stat().st_size
-                    if current_size > last_size:
-                        # File grew, read new lines
-                        with open(self.history_file, 'r', encoding='utf-8') as f:
-                            f.seek(last_size)
-                            for line in f:
-                                if line.strip():
-                                    operation_data = json.loads(line)
-                                    self.operation_queue.put(operation_data)
-                        last_size = current_size
-                
-                time.sleep(0.1)  # Check every 100ms
-            except Exception as e:
-                logger.error(f"File watcher error: {e}")
-                time.sleep(1)
     
     def _process_operation_queue(self):
         """

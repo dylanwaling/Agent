@@ -1,13 +1,11 @@
 {
   "status": "IDLE",
-  "operation": "Filtered search results: company handbook",
-  "timestamp": 1765669985.5552208,
-  "operation_id": "IDLE_1765669985.5552208",
+  "operation": "Stream complete for: whats in company_handbook",
+  "timestamp": 1765670353.2878022,
+  "operation_id": "IDLE_1765670353.2878022",
   "metadata": {
-    "query": "company handbook",
-    "total_candidates": 21,
-    "filtered_results": 14,
-    "score_threshold": 1.25,
-    "filter_time_s": 0.015
+    "question": "whats in company_handbook",
+    "stream_time_s": 5.686,
+    "token_count": 533
   }
 }
